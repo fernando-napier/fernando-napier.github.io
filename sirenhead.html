@@ -103,7 +103,7 @@ canvas { display:block; }
   border-radius:6px;
   color:#888; font-family:'Courier New',monospace;
   font-size:18px; text-align:center; line-height:44px;
-  display:none; user-select:none; cursor:pointer; z-index:200;
+  display:block; user-select:none; cursor:pointer; z-index:200;
 }
 #fs-btn:active { background:rgba(255,255,255,0.15); }
 
@@ -944,10 +944,10 @@ function updateHUD(worstState) {
   const danger = worstState==='chase'?Math.min(0.9,0.4+detMeter/100*0.5):worstState==='alert'?0.2:0;
   document.getElementById('vignette').style.opacity = danger.toFixed(2);
 
-  // Blink button — only available when fully detected (chase state)
+  // Blink button — visible when chased OR still recharging after a blink
   const isChased = worstState === 'chase';
   blinkAvail = isChased && blinkCooldown === 0;
-  blinkBtn.style.display = isChased ? 'block' : 'none';
+  blinkBtn.style.display = (isChased || blinkCooldown > 0) ? 'block' : 'none';
   const pct = blinkCooldown===0 ? 100 : ((BLINK_RECHARGE-blinkCooldown)/BLINK_RECHARGE*100);
   document.getElementById('blink-bar-fill').style.width = pct+'%';
   document.getElementById('blink-bar-fill').style.background = blinkAvail?'#33aaff':'#1a4466';
@@ -1069,8 +1069,8 @@ function startDanceScreen(reason, onDone) {
     tile.rotation.x = -Math.PI / 2; tile.position.set(fx * 5, 0.01, fz * 5); ds.add(tile);
   }
 
-  // Build dancing siren heads — one per siren in the game
-  const DANCER_COUNT = Math.max(1, sirens.length || SIREN_COUNT);
+  // Build dancing siren heads — match the count chosen for this game
+  const DANCER_COUNT = Math.max(1, SIREN_COUNT);
   const dancers = [];
   const spread = Math.min(10, 44 / Math.max(DANCER_COUNT - 1, 1));
   const xOffset = (DANCER_COUNT - 1) / 2;
@@ -1079,8 +1079,34 @@ function startDanceScreen(reason, onDone) {
     m.position.set((d - xOffset) * spread, 0, 0);
     m.scale.setScalar(0.72);
     ds.add(m);
-    dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
+    dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT), jumpVel: 0, jumpExtra: 0 });
   }
+
+  // Raycaster for interactive tapping/clicking on dancers
+  const dRay = new THREE.Raycaster();
+  const dMouse = new THREE.Vector2();
+  const dAllMeshes = [];
+  dancers.forEach(d => d.mesh.traverse(c => { if (c.isMesh) dAllMeshes.push(c); }));
+  // Map sub-mesh back to dancer
+  const meshToDancer = new Map();
+  dancers.forEach(d => d.mesh.traverse(c => { if (c.isMesh) meshToDancer.set(c, d); }));
+
+  function onDanceTap(e) {
+    e.preventDefault();
+    const rect = dCanvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    dMouse.x = ((cx - rect.left) / rect.width) * 2 - 1;
+    dMouse.y = -((cy - rect.top) / rect.height) * 2 + 1;
+    dRay.setFromCamera(dMouse, dc);
+    const hits = dRay.intersectObjects(dAllMeshes);
+    if (hits.length) {
+      const dancer = meshToDancer.get(hits[0].object);
+      if (dancer) dancer.jumpVel = 22; // launch upward
+    }
+  }
+  dCanvas.addEventListener('touchstart', onDanceTap, { passive: false });
+  dCanvas.addEventListener('click', onDanceTap);
 
   let danceRunning = true;
 
@@ -1122,8 +1148,10 @@ function startDanceScreen(reason, onDone) {
 
   dTimer.style.display = 'none';
 
+  let dLastT = performance.now();
   function danceLoop(now) {
     if (!danceRunning) return;
+    const dt = Math.min((now - dLastT) / 1000, 0.05); dLastT = now;
 
     // Spin disco lights
     discoLights.forEach((pl, i) => {
@@ -1138,25 +1166,31 @@ function startDanceScreen(reason, onDone) {
     floor.material.color.setHex(beat ? 0x1a1a3a : 0x111118);
 
     // Animate dancers
-    dancers.forEach(({ mesh, phase }) => {
-      const t = now * 0.003 + phase;
-      // Bounce up/down
-      mesh.position.y = Math.abs(Math.sin(t * 2)) * 2.2;
+    dancers.forEach(d => {
+      const t = now * 0.003 + d.phase;
+      const baseY = Math.abs(Math.sin(t * 2)) * 2.2;
+
+      // Jump physics
+      d.jumpVel -= 32 * dt;
+      d.jumpExtra = Math.max(0, d.jumpExtra + d.jumpVel * dt);
+      if (d.jumpExtra <= 0) { d.jumpExtra = 0; d.jumpVel = 0; }
+
+      d.mesh.position.y = baseY + d.jumpExtra;
       // Sway side to side
-      mesh.position.x += Math.sin(t) * 0.04;
-      mesh.position.x  = Math.max(-22, Math.min(22, mesh.position.x));
+      d.mesh.position.x += Math.sin(t) * 0.04;
+      d.mesh.position.x  = Math.max(-22, Math.min(22, d.mesh.position.x));
       // Spin on beat
-      mesh.rotation.y  = Math.sin(t * 0.8) * 0.7;
+      d.mesh.rotation.y  = Math.sin(t * 0.8) * 0.7;
       // Arm-wave: tilt whole mesh
-      mesh.rotation.z  = Math.sin(t * 1.5) * 0.18;
-      mesh.rotation.x  = Math.sin(t * 2.2) * 0.1;
+      d.mesh.rotation.z  = Math.sin(t * 1.5) * 0.18;
+      d.mesh.rotation.x  = Math.sin(t * 2.2) * 0.1;
 
       // Flicker siren lights fast
       const flickOn = Math.sin(now * 0.025) > 0;
-      const ptR = mesh.getObjectByName('ptRed'), ptB = mesh.getObjectByName('ptBlue');
+      const ptR = d.mesh.getObjectByName('ptRed'), ptB = d.mesh.getObjectByName('ptBlue');
       if (ptR) ptR.intensity = flickOn ? 7 : 0.5;
       if (ptB) ptB.intensity = flickOn ? 0.5 : 7;
-      const lR = mesh.getObjectByName('lightRed'), lB = mesh.getObjectByName('lightBlue');
+      const lR = d.mesh.getObjectByName('lightRed'), lB = d.mesh.getObjectByName('lightBlue');
       if (lR) lR.material.color.setHex(flickOn ? 0xff1100 : 0x220000);
       if (lB) lB.material.color.setHex(flickOn ? 0x0022ff : 0x000022);
     });
