@@ -154,6 +154,18 @@ canvas { display:block; }
   position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
   font-size:13px; color:#444; letter-spacing:4px;
 }
+#dance-view-btn {
+  position:absolute; bottom:64px; right:28px;
+  padding:10px 22px; font-size:12px; font-family:inherit;
+  background:rgba(0,0,0,0.55); color:#44ff88; border:1px solid rgba(68,255,136,0.4);
+  cursor:pointer; letter-spacing:2px; -webkit-tap-highlight-color:transparent;
+}
+#end-dance-btn {
+  margin-top:12px; padding:12px 32px; font-size:13px; font-family:inherit;
+  background:rgba(0,0,0,0.55); color:#44ff88; border:1px solid rgba(68,255,136,0.4);
+  cursor:pointer; letter-spacing:2px; display:none;
+  -webkit-tap-highlight-color:transparent;
+}
 
 /* ── Overlay ── */
 #overlay {
@@ -186,7 +198,8 @@ canvas { display:block; }
 <div id="dance-screen">
   <div id="dance-title">YOU ESCAPED!</div>
   <canvas id="dance-canvas"></canvas>
-  <div id="dance-timer">continuing in 10...</div>
+  <div id="dance-timer">continuing in 30...</div>
+  <button id="dance-view-btn">VIEW RESULTS</button>
 </div>
 
 <!-- Touch controls -->
@@ -231,6 +244,7 @@ canvas { display:block; }
     </label>
   </div>
   <button id="start-btn">BEGIN</button>
+  <button id="end-dance-btn">◀ BACK TO DANCE</button>
   <div id="ctrl-info">
     Left wheel — Move &nbsp;|&nbsp; Right drag — Look<br>
     RUN button — Sprint (makes noise)<br>
@@ -968,8 +982,33 @@ function startThrowAnimation(catcher) {
   requestAnimationFrame(tick);
 }
 
+// ── Dissolve siren heads then start dance ──────────────────────
+function dissolveAndStartDance(reason) {
+  const mats = [];
+  sirens.forEach(s => {
+    s.mesh.traverse(child => {
+      if (child.isMesh) {
+        const ms = Array.isArray(child.material) ? child.material : [child.material];
+        ms.forEach(m => { m.transparent = true; m.opacity = 1; mats.push(m); });
+      }
+    });
+  });
+  const startT = performance.now();
+  const DIS_DUR = 3000;
+  (function frame(now) {
+    const t = Math.min((now - startT) / DIS_DUR, 1);
+    mats.forEach(m => m.opacity = 1 - t);
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      playWinSong();
+      startDanceScreen(reason, () => showEndScreen(reason));
+    }
+  }(performance.now()));
+}
+
 // ── Dance screen ───────────────────────────────────────────────
-function startDanceScreen(onDone) {
+function startDanceScreen(reason, onDone) {
   const dScreen = document.getElementById('dance-screen');
   const dCanvas = document.getElementById('dance-canvas');
   const dTimer  = document.getElementById('dance-timer');
@@ -1025,8 +1064,34 @@ function startDanceScreen(onDone) {
     dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
   }
 
-  const DURATION = 20;
+  const DURATION = 30;
   let elapsed = 0, lastDT = performance.now(), danceRunning = true;
+
+  // Toggle buttons
+  const btnView = document.getElementById('dance-view-btn');
+  const btnBack = document.getElementById('end-dance-btn');
+
+  btnView.onclick = () => {
+    // Populate overlay with results but keep dance alive in background
+    const mins = Math.floor(survivalTime/60), secs = Math.floor(survivalTime%60).toString().padStart(2,'0');
+    const ov = document.getElementById('overlay');
+    ov.querySelector('h1').textContent = 'ESCAPED.';
+    ov.querySelector('h1').style.color = '#44ff88';
+    ov.querySelector('.sub').textContent = 'You gathered all the gems and survived.';
+    const fs = document.getElementById('final-score');
+    fs.style.display = 'block';
+    fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>`;
+    document.getElementById('start-btn').textContent = 'PLAY AGAIN';
+    btnBack.style.display = 'block';
+    dScreen.style.display = 'none';
+    ov.style.display = 'flex';
+  };
+
+  btnBack.onclick = () => {
+    document.getElementById('overlay').style.display = 'none';
+    btnBack.style.display = 'none';
+    dScreen.style.display = 'flex';
+  };
 
   function danceLoop(now) {
     if (!danceRunning) return;
@@ -1077,6 +1142,9 @@ function startDanceScreen(onDone) {
     if (elapsed >= DURATION) {
       danceRunning = false;
       dScreen.style.display = 'none';
+      btnView.onclick = null;
+      btnBack.style.display = 'none';
+      btnBack.onclick = null;
       dr.dispose();
       onDone();
     } else {
@@ -1094,12 +1162,10 @@ function endGame(reason) {
     showEndScreen(reason);
   } else {
     silenceSiren();
-    playWinSong();
-    // Hide touch controls first
     joystickZone.style.display='none'; sprintBtn.style.display='none';
     blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
     document.getElementById('minimap').style.display='none';
-    startDanceScreen(() => showEndScreen(reason));
+    dissolveAndStartDance(reason);
   }
 }
 
@@ -1119,6 +1185,7 @@ function showEndScreen(reason) {
   blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
   document.getElementById('dance-screen').style.display='none';
+  document.getElementById('end-dance-btn').style.display='none';
 }
 
 // ── Minimap ────────────────────────────────────────────────────
