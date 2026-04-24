@@ -103,7 +103,7 @@ canvas { display:block; }
   border-radius:6px;
   color:#888; font-family:'Courier New',monospace;
   font-size:18px; text-align:center; line-height:44px;
-  display:none; user-select:none; cursor:pointer;
+  display:none; user-select:none; cursor:pointer; z-index:200;
 }
 #fs-btn:active { background:rgba(255,255,255,0.15); }
 
@@ -171,8 +171,9 @@ canvas { display:block; }
 #overlay {
   position:fixed; inset:0; background:rgba(0,0,0,0.93);
   display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff;
+  overflow-y:auto; padding:20px 16px; box-sizing:border-box;
 }
-#overlay h1 { font-size:44px; color:#ff2200; letter-spacing:6px; margin-bottom:8px; }
+#overlay h1 { font-size:clamp(28px,6vw,44px); color:#ff2200; letter-spacing:6px; margin-bottom:8px; }
 #overlay .sub { font-size:12px; color:#555; letter-spacing:3px; margin-bottom:22px; }
 #final-score { font-size:16px; margin-bottom:20px; text-align:center; line-height:2; display:none; color:#888; }
 #final-score b { color:#ffcc44; }
@@ -1065,7 +1066,7 @@ function startDanceScreen(reason, onDone) {
   }
 
   const DURATION = 30;
-  let elapsed = 0, lastDT = performance.now(), danceRunning = true;
+  let elapsed = 0, lastDT = performance.now(), danceRunning = true, autoSwitched = false;
 
   // Toggle buttons
   const btnView = document.getElementById('dance-view-btn');
@@ -1096,10 +1097,11 @@ function startDanceScreen(reason, onDone) {
   function danceLoop(now) {
     if (!danceRunning) return;
     const dt = Math.min((now - lastDT) / 1000, 0.05); lastDT = now;
-    elapsed += dt;
-
-    const remaining = Math.max(0, Math.ceil(DURATION - elapsed));
-    dTimer.textContent = `continuing in ${remaining}...`;
+    if (!autoSwitched) {
+      elapsed += dt;
+      const remaining = Math.max(0, Math.ceil(DURATION - elapsed));
+      dTimer.textContent = `continuing in ${remaining}...`;
+    }
 
     // Spin disco lights
     discoLights.forEach((pl, i) => {
@@ -1139,17 +1141,26 @@ function startDanceScreen(reason, onDone) {
 
     dr.render(ds, dc);
 
-    if (elapsed >= DURATION) {
-      danceRunning = false;
-      dScreen.style.display = 'none';
-      btnView.onclick = null;
-      btnBack.style.display = 'none';
-      btnBack.onclick = null;
-      dr.dispose();
-      onDone();
-    } else {
-      requestAnimationFrame(danceLoop);
+    if (!autoSwitched && elapsed >= DURATION) {
+      autoSwitched = true;
+      dTimer.textContent = '';
+      // Auto-switch to results; keep dance alive in background
+      btnView.onclick();
+      // Dispose + remove toggles only when song finishes
+      const cleanup = () => {
+        danceRunning = false;
+        dScreen.style.display = 'none';
+        btnView.onclick = null;
+        btnBack.style.display = 'none';
+        btnBack.onclick = null;
+        dr.dispose();
+        onDone();
+      };
+      if (winAudio) winAudio.addEventListener('ended', cleanup, { once: true });
+      else cleanup();
     }
+
+    requestAnimationFrame(danceLoop);
   }
   requestAnimationFrame(danceLoop);
 }
@@ -1163,7 +1174,7 @@ function endGame(reason) {
   } else {
     silenceSiren();
     joystickZone.style.display='none'; sprintBtn.style.display='none';
-    blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
+    blinkBtn.style.display='none'; mapBtn.style.display='none';
     document.getElementById('minimap').style.display='none';
     dissolveAndStartDance(reason);
   }
@@ -1182,10 +1193,9 @@ function showEndScreen(reason) {
   document.getElementById('overlay').style.display='flex';
   // Ensure touch controls are hidden (covers the caught path too)
   joystickZone.style.display='none'; sprintBtn.style.display='none';
-  blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
+  blinkBtn.style.display='none'; mapBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
   document.getElementById('dance-screen').style.display='none';
-  document.getElementById('end-dance-btn').style.display='none';
 }
 
 // ── Minimap ────────────────────────────────────────────────────
