@@ -372,6 +372,7 @@ function silenceSiren() {
 }
 
 let winAudio = null;
+let activeDanceStop = null; // tears down any still-running dance before a new one starts
 function playWinSong() {
   if (winAudio) { winAudio.pause(); winAudio.currentTime = 0; }
   winAudio = new Audio('winsong.mp3');
@@ -1041,6 +1042,9 @@ function dissolveAndStartDance(reason, dancerCount) {
 
 // ── Dance screen ───────────────────────────────────────────────
 function startDanceScreen(reason, dancerCount, onDone) {
+  // Kill any dance loop still running from a previous game
+  if (activeDanceStop) { activeDanceStop(); activeDanceStop = null; }
+
   const dScreen = document.getElementById('dance-screen');
   const dCanvas = document.getElementById('dance-canvas');
   const dTimer  = document.getElementById('dance-timer');
@@ -1127,12 +1131,16 @@ function startDanceScreen(reason, dancerCount, onDone) {
 
   let danceRunning = true;
 
+  // Register teardown so a future game can kill this loop before starting its own
+  activeDanceStop = () => { danceRunning = false; dr.dispose(); };
+
   // Toggle buttons
   const btnView = document.getElementById('dance-view-btn');
   const btnBack = document.getElementById('end-dance-btn');
 
   const cleanup = () => {
     danceRunning = false;
+    activeDanceStop = null;
     dScreen.style.display = 'none';
     btnView.onclick = null;
     btnBack.style.display = 'none';
