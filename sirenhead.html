@@ -238,6 +238,22 @@ canvas { display:block; }
         <option value="6">6</option>
         <option value="7">7</option>
         <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
+    </label>
+    <label>GEMS TO COLLECT
+      <select id="gem-count-sel">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5" selected>5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
       </select>
     </label>
     <label>SHOW ON MAP
@@ -249,8 +265,7 @@ canvas { display:block; }
   <div id="ctrl-info">
     Left wheel — Move &nbsp;|&nbsp; Right drag — Look<br>
     RUN button — Sprint (makes noise)<br>
-    BLINK — Escape when detected<br>
-    Collect all 5 glowing gems
+    BLINK — Escape when detected
   </div>
 </div>
 
@@ -277,7 +292,7 @@ const DET_DRAIN       = 20;
 const ALERT_DUR       = 9;
 const ESCAPE_DUR      = 7;
 const CATCH_DIST      = 3.2;
-const GEM_COUNT      = 5;
+let GEM_COUNT        = 5;
 const WORLD_BOUND     = 90;
 const BLINK_RECHARGE  = 18;
 
@@ -797,7 +812,8 @@ function initGame() {
   playerMesh = makePlayerMesh(); playerMesh.position.set(0,0,0); scene.add(playerMesh);
   const spawnPts = [
     {x:75,z:75},{x:-75,z:70},{x:70,z:-75},{x:-70,z:-72},
-    {x:0,z:80},{x:80,z:0},{x:-80,z:0},{x:0,z:-80}
+    {x:0,z:80},{x:80,z:0},{x:-80,z:0},{x:0,z:-80},
+    {x:60,z:-60},{x:-60,z:60}
   ];
   spawnPts.slice(0, SIREN_COUNT).forEach((sp, i) => {
     const s = makeSirenState(sp.x, sp.z, i*37);
@@ -877,6 +893,18 @@ function update(now, dt) {
     }
     if (s.state==='chase') worstState='chase';
     else if (s.state==='alert' && worstState!=='chase') worstState='alert';
+
+    // Separation: push away from any siren that is too close
+    const SEP_R = 5;
+    for (const o of sirens) {
+      if (o === s) continue;
+      const sepDx = s.pos.x - o.pos.x, sepDz = s.pos.z - o.pos.z;
+      const sepD = Math.hypot(sepDx, sepDz);
+      if (sepD > 0 && sepD < SEP_R) {
+        const push = (SEP_R - sepD) / SEP_R * SH_CHASE_SPEED * dt;
+        tryMove(s.pos, (sepDx / sepD) * push, (sepDz / sepD) * push, SH_R);
+      }
+    }
 
     s.mesh.position.x=s.pos.x; s.mesh.position.z=s.pos.z;
     s.mesh.position.y=Math.sin(now*0.006+s.flickT)*0.55;
@@ -1159,7 +1187,7 @@ function startDanceScreen(reason, dancerCount, onDone) {
     ov.querySelector('.sub').textContent = 'You gathered all the gems and survived.';
     const fs = document.getElementById('final-score');
     fs.style.display = 'block';
-    fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>`;
+    fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
     document.getElementById('start-btn').textContent = 'PLAY AGAIN';
     btnBack.style.display = 'block';
     dScreen.style.display = 'none';
@@ -1250,7 +1278,7 @@ function showEndScreen(reason) {
   h1.style.color=reason==='win'?'#44ff88':'#ff2200';
   sub.textContent=reason==='win'?'You gathered all the gems and survived.':'Siren Head found you.';
   const fs=document.getElementById('final-score'); fs.style.display='block';
-  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>`;
+  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
   document.getElementById('start-btn').textContent=reason==='win'?'PLAY AGAIN':'TRY AGAIN';
   document.getElementById('overlay').style.display='flex';
   // Ensure touch controls are hidden (covers the caught path too)
@@ -1294,6 +1322,7 @@ function drawMinimap() {
 document.getElementById('start-btn').addEventListener('click', () => {
   if (!actx) initAudio(); else if (actx.state==='suspended') actx.resume();
   SIREN_COUNT    = parseInt(document.getElementById('siren-count-sel').value, 10);
+  GEM_COUNT      = parseInt(document.getElementById('gem-count-sel').value, 10);
   showSirenOnMap = document.getElementById('show-sirens-chk').checked;
   document.getElementById('overlay').style.display='none';
   document.getElementById('vignette').style.opacity='0';
