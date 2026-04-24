@@ -179,7 +179,7 @@ canvas { display:block; }
 
 <div id="hud">
   <div id="timer">0:00</div>
-  <div id="notes">NOTES: 0 / 5</div>
+  <div id="notes">GEMS: 0 / 5</div>
   <div id="det-wrap">
     <div id="det-label">DETECTION</div>
     <div id="det-track"><div id="det-fill"></div></div>
@@ -189,7 +189,7 @@ canvas { display:block; }
 
 <div id="overlay">
   <h1>SIREN HEAD</h1>
-  <div class="sub">Find all 5 notes. Stay hidden.</div>
+  <div class="sub">Find all 5 gems. Stay hidden.</div>
   <div id="final-score"></div>
   <div id="config">
     <label>SIREN HEADS
@@ -213,7 +213,7 @@ canvas { display:block; }
     Left wheel — Move &nbsp;|&nbsp; Right drag — Look<br>
     RUN button — Sprint (makes noise)<br>
     BLINK — Escape when detected<br>
-    Collect all 5 glowing notes
+    Collect all 5 glowing gems
   </div>
 </div>
 
@@ -240,7 +240,7 @@ const DET_DRAIN       = 20;
 const ALERT_DUR       = 9;
 const ESCAPE_DUR      = 7;
 const CATCH_DIST      = 3.2;
-const NOTE_COUNT      = 5;
+const GEM_COUNT      = 5;
 const WORLD_BOUND     = 90;
 const BLINK_RECHARGE  = 18;
 
@@ -476,25 +476,25 @@ function makeSirenHead() {
 }
 
 // ── Notes ──────────────────────────────────────────────────────
-const noteMeshes = [], noteLights = [], noteData = [];
+const gemMeshes = [], gemLights = [], gemData = [];
 
-function placeNotes() {
-  noteMeshes.forEach(m => scene.remove(m)); noteLights.forEach(l => scene.remove(l));
-  noteMeshes.length = 0; noteLights.length = 0; noteData.length = 0;
+function placeGems() {
+  gemMeshes.forEach(m => scene.remove(m)); gemLights.forEach(l => scene.remove(l));
+  gemMeshes.length = 0; gemLights.length = 0; gemData.length = 0;
   const noteGeo = new THREE.OctahedronGeometry(0.4), noteMat = new THREE.MeshBasicMaterial({ color: 0xffee44 });
   let placed = 0;
-  for (let a = 0; a < 800 && placed < NOTE_COUNT; a++) {
+  for (let a = 0; a < 800 && placed < GEM_COUNT; a++) {
     const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*140;
     if (Math.sqrt(x*x+z*z) < 14) continue;
     let blocked = false;
     for (const b of buildingData) { if (Math.abs(x-b.x)<b.w/2+1.5 && Math.abs(z-b.z)<b.d/2+1.5) { blocked=true; break; } }
     if (blocked) continue;
     let tooClose = false;
-    for (const nd of noteData) { if (Math.hypot(x-nd.x, z-nd.z)<22) { tooClose=true; break; } }
+    for (const nd of gemData) { if (Math.hypot(x-nd.x, z-nd.z)<22) { tooClose=true; break; } }
     if (tooClose) continue;
-    const mesh = new THREE.Mesh(noteGeo, noteMat); mesh.position.set(x, 1.2, z); scene.add(mesh); noteMeshes.push(mesh);
-    const pl = new THREE.PointLight(0xffee44, 1.4, 7); pl.position.set(x, 1.5, z); scene.add(pl); noteLights.push(pl);
-    noteData.push({ x, z, collected: false }); placed++;
+    const mesh = new THREE.Mesh(noteGeo, noteMat); mesh.position.set(x, 1.2, z); scene.add(mesh); gemMeshes.push(mesh);
+    const pl = new THREE.PointLight(0xffee44, 1.4, 7); pl.position.set(x, 1.5, z); scene.add(pl); gemLights.push(pl);
+    gemData.push({ x, z, collected: false }); placed++;
   }
 }
 
@@ -653,7 +653,7 @@ let showSirenOnMap = true;
 let playerMesh;
 let playerPos  = { x: 0, z: 0 };
 let detMeter   = 0;
-let notesCollected = 0, survivalTime = 0;
+let gemsCollected = 0, survivalTime = 0;
 let running = false, shakeAmt = 0, walkT = 0;
 let blinkCooldown = 0, blinkAvail = false;
 const sirens = [];
@@ -699,7 +699,7 @@ function doPlayerBlink() {
 }
 
 function dispatchSirensOnPickup(pickedX, pickedZ) {
-  const remaining = noteData.filter(n => !n.collected);
+  const remaining = gemData.filter(n => !n.collected);
   const sorted = sirens.slice().sort((a,b) =>
     Math.hypot(a.pos.x-pickedX, a.pos.z-pickedZ) - Math.hypot(b.pos.x-pickedX, b.pos.z-pickedZ));
   const rushCount = Math.max(1, Math.ceil(sorted.length*0.4));
@@ -738,7 +738,7 @@ function initGame() {
   if (playerMesh) scene.remove(playerMesh);
   sirens.forEach(s => { if (s.mesh) scene.remove(s.mesh); });
   sirens.length = 0;
-  generateBuildings(); addStreetLights(); placeNotes();
+  generateBuildings(); addStreetLights(); placeGems();
   playerPos = { x:0, z:0 };
   playerMesh = makePlayerMesh(); playerMesh.position.set(0,0,0); scene.add(playerMesh);
   const spawnPts = [
@@ -749,7 +749,7 @@ function initGame() {
     const s = makeSirenState(sp.x, sp.z, i*37);
     s.mesh = makeSirenHead(); s.mesh.position.set(sp.x, 0, sp.z); scene.add(s.mesh); sirens.push(s);
   });
-  detMeter=0; notesCollected=0; survivalTime=0; shakeAmt=0; heartTimer=0;
+  detMeter=0; gemsCollected=0; survivalTime=0; shakeAmt=0; heartTimer=0;
   camYaw=0; walkT=0; blinkCooldown=0; blinkAvail=false;
   isSprinting=false; sprintBtn.classList.remove('active');
   camera.position.set(0, 5, -8); camera.fov=72; camera.updateProjectionMatrix();
@@ -769,8 +769,8 @@ function update(now, dt) {
     // Right   = perpendicular: (cos(camYaw), -sin(camYaw))
     // joyDirZ positive = screen down = move backward, so negate it for forward
     const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
-    mdx = ( joyDirX * cy - joyDirZ * sy) * speed * joyMag * dt;
-    mdz = (-joyDirX * sy - joyDirZ * cy) * speed * joyMag * dt;
+    mdx = (-joyDirX * cy - joyDirZ * sy) * speed * joyMag * dt;
+    mdz = ( joyDirX * sy - joyDirZ * cy) * speed * joyMag * dt;
   }
   const moving = mdx !== 0 || mdz !== 0;
   if (moving) {
@@ -844,14 +844,14 @@ function update(now, dt) {
   else                 detMeter=Math.max(0,   detMeter-DET_DRAIN*dt);
 
   // ── Notes ──
-  noteMeshes.forEach((m, i) => {
-    if (noteData[i].collected) return;
+  gemMeshes.forEach((m, i) => {
+    if (gemData[i].collected) return;
     m.rotation.y+=dt*1.5; m.position.y=1.2+Math.sin(now*0.002+i)*0.15;
-    if (Math.hypot(playerPos.x-noteData[i].x, playerPos.z-noteData[i].z)<1.5) {
-      noteData[i].collected=true; scene.remove(m); scene.remove(noteLights[i]);
-      notesCollected++;
-      dispatchSirensOnPickup(noteData[i].x, noteData[i].z); playAlert();
-      if (notesCollected>=NOTE_COUNT) { endGame('win'); return; }
+    if (Math.hypot(playerPos.x-gemData[i].x, playerPos.z-gemData[i].z)<1.5) {
+      gemData[i].collected=true; scene.remove(m); scene.remove(gemLights[i]);
+      gemsCollected++;
+      dispatchSirensOnPickup(gemData[i].x, gemData[i].z); playAlert();
+      if (gemsCollected>=GEM_COUNT) { endGame('win'); return; }
     }
   });
 
@@ -871,7 +871,7 @@ function update(now, dt) {
   }
   camera.lookAt(playerPos.x, pivotY, playerPos.z);
 
-  noteLights.forEach((l,i) => { if (!noteData[i].collected) l.intensity=1.0+Math.sin(now*0.004+i*2)*0.4; });
+  gemLights.forEach((l,i) => { if (!gemData[i].collected) l.intensity=1.0+Math.sin(now*0.004+i*2)*0.4; });
 
   updateAudio(detMeter, minDist, dt);
   if (worstState==='chase') shakeAmt=Math.max(shakeAmt, 0.15);
@@ -881,7 +881,7 @@ function update(now, dt) {
 function updateHUD(worstState) {
   const mins=Math.floor(survivalTime/60), secs=Math.floor(survivalTime%60).toString().padStart(2,'0');
   document.getElementById('timer').textContent  = `${mins}:${secs}`;
-  document.getElementById('notes').textContent  = `NOTES: ${notesCollected} / ${NOTE_COUNT}`;
+  document.getElementById('notes').textContent  = `GEMS: ${gemsCollected} / ${GEM_COUNT}`;
   document.getElementById('det-fill').style.width = detMeter+'%';
   document.getElementById('det-fill').style.background = worstState==='chase'?'#ff2200':worstState==='alert'?'#ff8800':'#884400';
   const statEl = document.getElementById('det-status');
@@ -938,9 +938,9 @@ function endGame(reason) {
   const sub=document.getElementById('overlay').querySelector('.sub');
   h1.textContent=reason==='win'?'ESCAPED.':'CAUGHT.';
   h1.style.color=reason==='win'?'#44ff88':'#ff2200';
-  sub.textContent=reason==='win'?'You gathered all the notes and survived.':'Siren Head found you.';
+  sub.textContent=reason==='win'?'You gathered all the gems and survived.':'Siren Head found you.';
   const fs=document.getElementById('final-score'); fs.style.display='block';
-  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Notes: <b>${notesCollected} / ${NOTE_COUNT}</b>`;
+  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>`;
   document.getElementById('start-btn').textContent=reason==='win'?'PLAY AGAIN':'TRY AGAIN';
   document.getElementById('overlay').style.display='flex';
   // Hide touch controls
@@ -959,9 +959,9 @@ function drawMinimap() {
   mmCtx.fillStyle='rgba(5,10,16,0.82)'; mmCtx.fillRect(0,0,MM_SIZE,MM_SIZE);
   mmCtx.fillStyle='rgba(80,100,115,0.45)';
   for (const b of buildingData) mmCtx.fillRect(wx(b.x)-b.w*sc/2, wz(b.z)-b.d*sc/2, b.w*sc, b.d*sc);
-  for (let i=0;i<noteData.length;i++) {
-    if (noteData[i].collected) continue;
-    const px=wx(noteData[i].x), pz=wz(noteData[i].z);
+  for (let i=0;i<gemData.length;i++) {
+    if (gemData[i].collected) continue;
+    const px=wx(gemData[i].x), pz=wz(gemData[i].z);
     mmCtx.beginPath(); mmCtx.arc(px,pz,4,0,Math.PI*2); mmCtx.fillStyle='#ffee44'; mmCtx.fill();
     mmCtx.beginPath(); mmCtx.arc(px,pz,6,0,Math.PI*2); mmCtx.strokeStyle='rgba(255,238,68,0.35)'; mmCtx.lineWidth=1; mmCtx.stroke();
   }
