@@ -983,22 +983,34 @@ function startThrowAnimation(catcher) {
   requestAnimationFrame(tick);
 }
 
-// ── Dissolve siren heads then start dance ──────────────────────
+// ── Topple siren heads then start dance ────────────────────────
 function dissolveAndStartDance(reason) {
-  const mats = [];
-  sirens.forEach(s => {
-    s.mesh.traverse(child => {
-      if (child.isMesh) {
-        const ms = Array.isArray(child.material) ? child.material : [child.material];
-        ms.forEach(m => { m.transparent = true; m.opacity = 1; mats.push(m); });
-      }
-    });
-  });
+  // Each siren falls in a random direction (left or right)
+  const fallDirs = sirens.map(() => (Math.random() < 0.5 ? 1 : -1));
+
+  // Compute centroid of all siren positions
+  let cx = 0, cz = 0;
+  sirens.forEach(s => { cx += s.pos.x; cz += s.pos.z; });
+  cx /= sirens.length; cz /= sirens.length;
+
+  // Camera pull-in target: 18 units back from centroid along current camera-to-centroid axis
+  const camStart = camera.position.clone();
+  const toCentroid = new THREE.Vector3(cx - camStart.x, 0, cz - camStart.z).normalize();
+  const camTarget = new THREE.Vector3(cx - toCentroid.x * 18, 5, cz - toCentroid.z * 18);
+
   const startT = performance.now();
-  const DIS_DUR = 3000;
+  const DIS_DUR = 5000;
   (function frame(now) {
     const t = Math.min((now - startT) / DIS_DUR, 1);
-    mats.forEach(m => m.opacity = 1 - t);
+    // Ease-in so fall accelerates like gravity
+    const eased = t * t;
+    sirens.forEach((s, i) => {
+      s.mesh.rotation.z = fallDirs[i] * eased * (Math.PI / 2);
+    });
+    // Smooth camera lerp toward centroid
+    const lerpT = 1 - Math.pow(1 - t, 2); // ease-out so it arrives gently
+    camera.position.lerpVectors(camStart, camTarget, lerpT);
+    camera.lookAt(cx, 4, cz);
     if (t < 1) {
       requestAnimationFrame(frame);
     } else {
@@ -1030,14 +1042,16 @@ function startDanceScreen(reason, onDone) {
   ds.add(new THREE.AmbientLight(0x334455, 1.5));
 
   const dc = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200);
-  dc.position.set(0, 14, 38);
+  const camZ = 32 + SIREN_COUNT * 2.5;
+  dc.position.set(0, 14, camZ);
   dc.lookAt(0, 10, 0);
 
-  // Disco lights
+  // Disco lights — orbit radius grows with crowd size
+  const discoR = 22 + SIREN_COUNT * 2;
   const discoColors = [0xff0044, 0x00ffcc, 0xffee00, 0x8833ff, 0xff6600];
   const discoLights = discoColors.map((col, i) => {
-    const pl = new THREE.PointLight(col, 3.5, 60);
-    pl.position.set(Math.cos(i / discoColors.length * Math.PI * 2) * 22, 18, Math.sin(i / discoColors.length * Math.PI * 2) * 22);
+    const pl = new THREE.PointLight(col, 3.5, 80);
+    pl.position.set(Math.cos(i / discoColors.length * Math.PI * 2) * discoR, 18, Math.sin(i / discoColors.length * Math.PI * 2) * discoR);
     ds.add(pl); return pl;
   });
 
@@ -1053,13 +1067,14 @@ function startDanceScreen(reason, onDone) {
     tile.rotation.x = -Math.PI / 2; tile.position.set(fx * 5, 0.01, fz * 5); ds.add(tile);
   }
 
-  // Build 3 dancing siren heads
-  const DANCER_COUNT = 3;
+  // Build dancing siren heads — one per siren in the game
+  const DANCER_COUNT = SIREN_COUNT;
   const dancers = [];
-  const xPositions = [-18, 0, 18];
+  const spread = Math.min(10, 44 / Math.max(DANCER_COUNT - 1, 1));
+  const xOffset = (DANCER_COUNT - 1) / 2;
   for (let d = 0; d < DANCER_COUNT; d++) {
     const m = makeSirenHead();
-    m.position.set(xPositions[d], 0, 0);
+    m.position.set((d - xOffset) * spread, 0, 0);
     m.scale.setScalar(0.72);
     ds.add(m);
     dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
@@ -1106,8 +1121,8 @@ function startDanceScreen(reason, onDone) {
     // Spin disco lights
     discoLights.forEach((pl, i) => {
       const a = now * 0.001 + i * (Math.PI * 2 / discoColors.length);
-      pl.position.x = Math.cos(a) * 22;
-      pl.position.z = Math.sin(a) * 22;
+      pl.position.x = Math.cos(a) * discoR;
+      pl.position.z = Math.sin(a) * discoR;
       pl.intensity  = 3.0 + Math.sin(now * 0.008 + i) * 1.5;
     });
 
