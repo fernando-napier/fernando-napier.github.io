@@ -348,7 +348,12 @@ function playCaught() {
   o.start(t); o.stop(t + 0.9);
 }
 function silenceSiren() {
-  if (sirenGain && actx) sirenGain.gain.setTargetAtTime(0, actx.currentTime, 0.4);
+  if (!actx) return;
+  if (sirenGain) {
+    sirenGain.gain.cancelScheduledValues(actx.currentTime);
+    sirenGain.gain.setValueAtTime(sirenGain.gain.value, actx.currentTime);
+    sirenGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.05);
+  }
 }
 
 let winAudio = null;
@@ -1020,7 +1025,7 @@ function startDanceScreen(onDone) {
     dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
   }
 
-  const DURATION = 10;
+  const DURATION = 20;
   let elapsed = 0, lastDT = performance.now(), danceRunning = true;
 
   function danceLoop(now) {
