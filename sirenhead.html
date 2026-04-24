@@ -1127,6 +1127,7 @@ function startDanceScreen(reason, dancerCount, onDone) {
     }
   }
   dCanvas.addEventListener('touchstart', onDanceTap, { passive: false });
+  dCanvas.addEventListener('touchmove',  onDanceTap, { passive: false });
   dCanvas.addEventListener('click', onDanceTap);
 
   let danceRunning = true;
