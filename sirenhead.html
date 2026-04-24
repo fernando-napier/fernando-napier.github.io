@@ -94,6 +94,19 @@ canvas { display:block; }
 #blink-bar-track { width:80%; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; margin:5px auto 0; }
 #blink-bar-fill  { height:100%; width:100%; background:#3388ff; border-radius:2px; }
 
+/* ── Fullscreen button ── */
+#fs-btn {
+  position:fixed; top:18px; right:76px;
+  width:44px; height:44px;
+  background:rgba(255,255,255,0.07);
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:6px;
+  color:#888; font-family:'Courier New',monospace;
+  font-size:18px; text-align:center; line-height:44px;
+  display:none; user-select:none; cursor:pointer;
+}
+#fs-btn:active { background:rgba(255,255,255,0.15); }
+
 /* ── Map toggle ── */
 #map-btn {
   position:fixed; top:18px; right:22px;
@@ -161,6 +174,7 @@ canvas { display:block; }
   BLINK
   <div id="blink-bar-track"><div id="blink-bar-fill"></div></div>
 </div>
+<div id="fs-btn">⛶</div>
 <div id="map-btn">MAP</div>
 
 <div id="hud">
@@ -604,6 +618,23 @@ blinkBtn.addEventListener('touchstart', e => {
   doPlayerBlink();
 }, { passive: false });
 
+// Fullscreen toggle
+const fsBtn = document.getElementById('fs-btn');
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+    if (req) req.call(el);
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (exit) exit.call(document);
+  }
+}
+fsBtn.addEventListener('touchstart', e => { e.preventDefault(); toggleFullscreen(); }, { passive: false });
+fsBtn.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange',        () => { fsBtn.textContent = document.fullscreenElement        ? '✕' : '⛶'; });
+document.addEventListener('webkitfullscreenchange',  () => { fsBtn.textContent = document.webkitFullscreenElement  ? '✕' : '⛶'; });
+
 // Map toggle
 const mapBtn = document.getElementById('map-btn');
 mapBtn.addEventListener('touchstart', e => {
@@ -734,11 +765,12 @@ function update(now, dt) {
   const speed = isSprinting ? RUN_SPEED : WALK_SPEED;
   let mdx = 0, mdz = 0;
   if (joyMag > 0.08) {
-    // joyDirX = screen right (+x), joyDirZ = screen down (+y maps to world +z forward)
-    // Rotate joystick vector by camYaw to align with camera facing direction
+    // Forward = direction camera is looking toward player: (sin(camYaw), cos(camYaw))
+    // Right   = perpendicular: (cos(camYaw), -sin(camYaw))
+    // joyDirZ positive = screen down = move backward, so negate it for forward
     const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
     mdx = ( joyDirX * cy - joyDirZ * sy) * speed * joyMag * dt;
-    mdz = ( joyDirX * sy + joyDirZ * cy) * speed * joyMag * dt;
+    mdz = (-joyDirX * sy - joyDirZ * cy) * speed * joyMag * dt;
   }
   const moving = mdx !== 0 || mdz !== 0;
   if (moving) {
@@ -913,7 +945,7 @@ function endGame(reason) {
   document.getElementById('overlay').style.display='flex';
   // Hide touch controls
   joystickZone.style.display='none'; sprintBtn.style.display='none';
-  blinkBtn.style.display='none'; mapBtn.style.display='none';
+  blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
 }
 
@@ -958,6 +990,7 @@ document.getElementById('start-btn').addEventListener('click', () => {
   joystickZone.style.display='block';
   sprintBtn.style.display='flex';
   mapBtn.style.display='block';
+  fsBtn.style.display='block';
   mapBtn.classList.toggle('active', showSirenOnMap);
   makeGround(); initGame(); running=true;
 });
