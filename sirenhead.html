@@ -985,32 +985,34 @@ function startThrowAnimation(catcher) {
 
 // ── Topple siren heads then start dance ────────────────────────
 function dissolveAndStartDance(reason) {
-  // Each siren falls in a random direction (left or right)
   const fallDirs = sirens.map(() => (Math.random() < 0.5 ? 1 : -1));
 
-  // Compute centroid of all siren positions
+  // Centroid of all siren positions (pos is {x,z})
   let cx = 0, cz = 0;
   sirens.forEach(s => { cx += s.pos.x; cz += s.pos.z; });
   cx /= sirens.length; cz /= sirens.length;
 
-  // Camera pull-in target: 18 units back from centroid along current camera-to-centroid axis
+  // Pull camera from current spot toward a point 20 units behind the centroid
   const camStart = camera.position.clone();
-  const toCentroid = new THREE.Vector3(cx - camStart.x, 0, cz - camStart.z).normalize();
-  const camTarget = new THREE.Vector3(cx - toCentroid.x * 18, 5, cz - toCentroid.z * 18);
+  const dx = cx - camStart.x, dz = cz - camStart.z;
+  const len = Math.sqrt(dx*dx + dz*dz) || 1;
+  const camTarget = new THREE.Vector3(
+    cx - (dx/len) * 20,
+    8,
+    cz - (dz/len) * 20
+  );
 
   const startT = performance.now();
   const DIS_DUR = 5000;
   (function frame(now) {
     const t = Math.min((now - startT) / DIS_DUR, 1);
-    // Ease-in so fall accelerates like gravity
-    const eased = t * t;
+    const eased = t * t;                        // ease-in fall (gravity feel)
+    const lerpT = 1 - Math.pow(1 - t, 3);      // ease-out camera (smooth arrival)
     sirens.forEach((s, i) => {
       s.mesh.rotation.z = fallDirs[i] * eased * (Math.PI / 2);
     });
-    // Smooth camera lerp toward centroid
-    const lerpT = 1 - Math.pow(1 - t, 2); // ease-out so it arrives gently
     camera.position.lerpVectors(camStart, camTarget, lerpT);
-    camera.lookAt(cx, 4, cz);
+    camera.lookAt(cx, 2, cz);
     if (t < 1) {
       requestAnimationFrame(frame);
     } else {
@@ -1068,7 +1070,7 @@ function startDanceScreen(reason, onDone) {
   }
 
   // Build dancing siren heads — one per siren in the game
-  const DANCER_COUNT = SIREN_COUNT;
+  const DANCER_COUNT = Math.max(1, sirens.length || SIREN_COUNT);
   const dancers = [];
   const spread = Math.min(10, 44 / Math.max(DANCER_COUNT - 1, 1));
   const xOffset = (DANCER_COUNT - 1) / 2;
@@ -1080,15 +1082,24 @@ function startDanceScreen(reason, onDone) {
     dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
   }
 
-  const DURATION = 30;
-  let elapsed = 0, lastDT = performance.now(), danceRunning = true, autoSwitched = false;
+  let danceRunning = true;
 
   // Toggle buttons
   const btnView = document.getElementById('dance-view-btn');
   const btnBack = document.getElementById('end-dance-btn');
 
+  const cleanup = () => {
+    danceRunning = false;
+    dScreen.style.display = 'none';
+    btnView.onclick = null;
+    btnBack.style.display = 'none';
+    btnBack.onclick = null;
+    dr.dispose();
+    onDone();
+  };
+  if (winAudio) winAudio.addEventListener('ended', cleanup, { once: true });
+
   btnView.onclick = () => {
-    // Populate overlay with results but keep dance alive in background
     const mins = Math.floor(survivalTime/60), secs = Math.floor(survivalTime%60).toString().padStart(2,'0');
     const ov = document.getElementById('overlay');
     ov.querySelector('h1').textContent = 'ESCAPED.';
@@ -1109,14 +1120,10 @@ function startDanceScreen(reason, onDone) {
     dScreen.style.display = 'flex';
   };
 
+  dTimer.style.display = 'none';
+
   function danceLoop(now) {
     if (!danceRunning) return;
-    const dt = Math.min((now - lastDT) / 1000, 0.05); lastDT = now;
-    if (!autoSwitched) {
-      elapsed += dt;
-      const remaining = Math.max(0, Math.ceil(DURATION - elapsed));
-      dTimer.textContent = `continuing in ${remaining}...`;
-    }
 
     // Spin disco lights
     discoLights.forEach((pl, i) => {
@@ -1155,26 +1162,6 @@ function startDanceScreen(reason, onDone) {
     });
 
     dr.render(ds, dc);
-
-    if (!autoSwitched && elapsed >= DURATION) {
-      autoSwitched = true;
-      dTimer.textContent = '';
-      // Auto-switch to results; keep dance alive in background
-      btnView.onclick();
-      // Dispose + remove toggles only when song finishes
-      const cleanup = () => {
-        danceRunning = false;
-        dScreen.style.display = 'none';
-        btnView.onclick = null;
-        btnBack.style.display = 'none';
-        btnBack.onclick = null;
-        dr.dispose();
-        onDone();
-      };
-      if (winAudio) winAudio.addEventListener('ended', cleanup, { once: true });
-      else cleanup();
-    }
-
     requestAnimationFrame(danceLoop);
   }
   requestAnimationFrame(danceLoop);
