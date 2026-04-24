@@ -3,10 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="screen-orientation" content="landscape">
+<meta name="x5-orientation" content="landscape">
+<meta name="full-screen" content="yes">
 <title>Siren Head — Touch</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { overflow:hidden; background:#000; font-family:'Courier New',monospace; touch-action:none; }
+
+/* CSS fallback: rotate the whole page if device is in portrait */
+@media screen and (orientation: portrait) {
+  body {
+    transform: rotate(90deg);
+    transform-origin: left top;
+    width: 100vh;
+    height: 100vw;
+    position: fixed;
+    top: 0;
+    left: 100%;
+  }
+}
 canvas { display:block; }
 
 #hud { position:fixed; inset:0; pointer-events:none; color:#ccc; }
@@ -718,12 +734,11 @@ function update(now, dt) {
   const speed = isSprinting ? RUN_SPEED : WALK_SPEED;
   let mdx = 0, mdz = 0;
   if (joyMag > 0.08) {
-    // joyDirX/Z is in screen space; rotate by camYaw to get world space
+    // joyDirX = screen right (+x), joyDirZ = screen down (+y maps to world +z forward)
+    // Rotate joystick vector by camYaw to align with camera facing direction
     const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
-    const wx =  joyDirX * cy + joyDirZ * sy;
-    const wz = -joyDirX * sy + joyDirZ * cy;
-    mdx = wx * speed * joyMag * dt;
-    mdz = wz * speed * joyMag * dt;
+    mdx = ( joyDirX * cy - joyDirZ * sy) * speed * joyMag * dt;
+    mdz = ( joyDirX * sy + joyDirZ * cy) * speed * joyMag * dt;
   }
   const moving = mdx !== 0 || mdz !== 0;
   if (moving) {
@@ -946,6 +961,20 @@ document.getElementById('start-btn').addEventListener('click', () => {
   mapBtn.classList.toggle('active', showSirenOnMap);
   makeGround(); initGame(); running=true;
 });
+
+// ── Force landscape ────────────────────────────────────────────
+(function lockLandscape() {
+  const orient = screen.orientation || screen.msOrientation || screen.mozOrientation;
+  if (orient && orient.lock) {
+    orient.lock('landscape').catch(() => {});
+  } else if (screen.lockOrientation) {
+    screen.lockOrientation('landscape');
+  } else if (screen.mozLockOrientation) {
+    screen.mozLockOrientation('landscape');
+  } else if (screen.msLockOrientation) {
+    screen.msLockOrientation('landscape');
+  }
+})();
 
 // ── Render loop ────────────────────────────────────────────────
 let lastT=0;
