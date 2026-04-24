@@ -138,6 +138,23 @@ canvas { display:block; }
   pointer-events:none; opacity:0;
 }
 
+/* ── Dance screen ── */
+#dance-screen {
+  position:fixed; inset:0; background:#000;
+  display:none; flex-direction:column; align-items:center; justify-content:center;
+  z-index:50;
+}
+#dance-canvas { display:block; }
+#dance-title {
+  position:absolute; top:22px; left:50%; transform:translateX(-50%);
+  font-size:28px; color:#44ff88; letter-spacing:8px; text-shadow:0 0 20px #44ff88;
+  white-space:nowrap;
+}
+#dance-timer {
+  position:absolute; bottom:28px; left:50%; transform:translateX(-50%);
+  font-size:13px; color:#444; letter-spacing:4px;
+}
+
 /* ── Overlay ── */
 #overlay {
   position:fixed; inset:0; background:rgba(0,0,0,0.93);
@@ -166,6 +183,11 @@ canvas { display:block; }
 <div id="vignette"></div>
 <canvas id="minimap" width="140" height="140"></canvas>
 <div id="blink-flash"></div>
+<div id="dance-screen">
+  <div id="dance-title">YOU ESCAPED!</div>
+  <canvas id="dance-canvas"></canvas>
+  <div id="dance-timer">continuing in 10...</div>
+</div>
 
 <!-- Touch controls -->
 <div id="joystick-zone"><div id="joystick-knob"></div></div>
@@ -941,10 +963,142 @@ function startThrowAnimation(catcher) {
   requestAnimationFrame(tick);
 }
 
+// ── Dance screen ───────────────────────────────────────────────
+function startDanceScreen(onDone) {
+  const dScreen = document.getElementById('dance-screen');
+  const dCanvas = document.getElementById('dance-canvas');
+  const dTimer  = document.getElementById('dance-timer');
+  dScreen.style.display = 'flex';
+
+  // Size dance canvas to window
+  dCanvas.width  = window.innerWidth;
+  dCanvas.height = window.innerHeight;
+
+  // Own renderer/scene/camera for dance
+  const dr = new THREE.WebGLRenderer({ canvas: dCanvas, antialias: true });
+  dr.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  dr.setSize(window.innerWidth, window.innerHeight);
+  dr.setClearColor(0x050a10);
+
+  const ds = new THREE.Scene();
+  ds.fog = new THREE.FogExp2(0x050a10, 0.018);
+  ds.add(new THREE.AmbientLight(0x334455, 1.5));
+
+  const dc = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 200);
+  dc.position.set(0, 14, 38);
+  dc.lookAt(0, 10, 0);
+
+  // Disco lights
+  const discoColors = [0xff0044, 0x00ffcc, 0xffee00, 0x8833ff, 0xff6600];
+  const discoLights = discoColors.map((col, i) => {
+    const pl = new THREE.PointLight(col, 3.5, 60);
+    pl.position.set(Math.cos(i / discoColors.length * Math.PI * 2) * 22, 18, Math.sin(i / discoColors.length * Math.PI * 2) * 22);
+    ds.add(pl); return pl;
+  });
+
+  // Floor
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshLambertMaterial({ color: 0x111118 }));
+  floor.rotation.x = -Math.PI / 2; ds.add(floor);
+
+  // Floor tiles
+  for (let fx = -4; fx <= 4; fx++) for (let fz = -4; fz <= 4; fz++) {
+    const tile = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 4.8), new THREE.MeshBasicMaterial({
+      color: (fx + fz) % 2 === 0 ? 0x1a1a2e : 0x16213e, transparent: true, opacity: 0.9
+    }));
+    tile.rotation.x = -Math.PI / 2; tile.position.set(fx * 5, 0.01, fz * 5); ds.add(tile);
+  }
+
+  // Build 3 dancing siren heads
+  const DANCER_COUNT = 3;
+  const dancers = [];
+  const xPositions = [-18, 0, 18];
+  for (let d = 0; d < DANCER_COUNT; d++) {
+    const m = makeSirenHead();
+    m.position.set(xPositions[d], 0, 0);
+    m.scale.setScalar(0.72);
+    ds.add(m);
+    dancers.push({ mesh: m, phase: d * (Math.PI * 2 / DANCER_COUNT) });
+  }
+
+  const DURATION = 10;
+  let elapsed = 0, lastDT = performance.now(), danceRunning = true;
+
+  function danceLoop(now) {
+    if (!danceRunning) return;
+    const dt = Math.min((now - lastDT) / 1000, 0.05); lastDT = now;
+    elapsed += dt;
+
+    const remaining = Math.max(0, Math.ceil(DURATION - elapsed));
+    dTimer.textContent = `continuing in ${remaining}...`;
+
+    // Spin disco lights
+    discoLights.forEach((pl, i) => {
+      const a = now * 0.001 + i * (Math.PI * 2 / discoColors.length);
+      pl.position.x = Math.cos(a) * 22;
+      pl.position.z = Math.sin(a) * 22;
+      pl.intensity  = 3.0 + Math.sin(now * 0.008 + i) * 1.5;
+    });
+
+    // Flash floor tiles to beat (~120bpm = 0.5s)
+    const beat = Math.sin(now * 0.013) > 0.6;
+    floor.material.color.setHex(beat ? 0x1a1a3a : 0x111118);
+
+    // Animate dancers
+    dancers.forEach(({ mesh, phase }) => {
+      const t = now * 0.003 + phase;
+      // Bounce up/down
+      mesh.position.y = Math.abs(Math.sin(t * 2)) * 2.2;
+      // Sway side to side
+      mesh.position.x += Math.sin(t) * 0.04;
+      mesh.position.x  = Math.max(-22, Math.min(22, mesh.position.x));
+      // Spin on beat
+      mesh.rotation.y  = Math.sin(t * 0.8) * 0.7;
+      // Arm-wave: tilt whole mesh
+      mesh.rotation.z  = Math.sin(t * 1.5) * 0.18;
+      mesh.rotation.x  = Math.sin(t * 2.2) * 0.1;
+
+      // Flicker siren lights fast
+      const flickOn = Math.sin(now * 0.025) > 0;
+      const ptR = mesh.getObjectByName('ptRed'), ptB = mesh.getObjectByName('ptBlue');
+      if (ptR) ptR.intensity = flickOn ? 7 : 0.5;
+      if (ptB) ptB.intensity = flickOn ? 0.5 : 7;
+      const lR = mesh.getObjectByName('lightRed'), lB = mesh.getObjectByName('lightBlue');
+      if (lR) lR.material.color.setHex(flickOn ? 0xff1100 : 0x220000);
+      if (lB) lB.material.color.setHex(flickOn ? 0x0022ff : 0x000022);
+    });
+
+    dr.render(ds, dc);
+
+    if (elapsed >= DURATION) {
+      danceRunning = false;
+      dScreen.style.display = 'none';
+      dr.dispose();
+      onDone();
+    } else {
+      requestAnimationFrame(danceLoop);
+    }
+  }
+  requestAnimationFrame(danceLoop);
+}
+
 // ── End Game ───────────────────────────────────────────────────
 function endGame(reason) {
   running=false;
-  if (reason==='caught') { playCaught(); shakeAmt=3; } else { silenceSiren(); playWinSong(); }
+  if (reason==='caught') {
+    playCaught(); shakeAmt=3;
+    showEndScreen(reason);
+  } else {
+    silenceSiren();
+    playWinSong();
+    // Hide touch controls first
+    joystickZone.style.display='none'; sprintBtn.style.display='none';
+    blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
+    document.getElementById('minimap').style.display='none';
+    startDanceScreen(() => showEndScreen(reason));
+  }
+}
+
+function showEndScreen(reason) {
   const mins=Math.floor(survivalTime/60), secs=Math.floor(survivalTime%60).toString().padStart(2,'0');
   const h1=document.getElementById('overlay').querySelector('h1');
   const sub=document.getElementById('overlay').querySelector('.sub');
@@ -955,10 +1109,11 @@ function endGame(reason) {
   fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>`;
   document.getElementById('start-btn').textContent=reason==='win'?'PLAY AGAIN':'TRY AGAIN';
   document.getElementById('overlay').style.display='flex';
-  // Hide touch controls
+  // Ensure touch controls are hidden (covers the caught path too)
   joystickZone.style.display='none'; sprintBtn.style.display='none';
   blinkBtn.style.display='none'; mapBtn.style.display='none'; fsBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
+  document.getElementById('dance-screen').style.display='none';
 }
 
 // ── Minimap ────────────────────────────────────────────────────
