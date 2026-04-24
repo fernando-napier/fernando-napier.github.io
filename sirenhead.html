@@ -329,6 +329,17 @@ function silenceSiren() {
   if (sirenGain && actx) sirenGain.gain.setTargetAtTime(0, actx.currentTime, 0.4);
 }
 
+let winAudio = null;
+function playWinSong() {
+  if (winAudio) { winAudio.pause(); winAudio.currentTime = 0; }
+  winAudio = new Audio('winsong.mp3');
+  winAudio.volume = 0.85;
+  winAudio.play().catch(() => {});
+}
+function stopWinSong() {
+  if (winAudio) { winAudio.pause(); winAudio.currentTime = 0; }
+}
+
 // ── Buildings ──────────────────────────────────────────────────
 const buildingData   = [];
 const buildingMeshes = [];
@@ -752,6 +763,7 @@ function initGame() {
   detMeter=0; gemsCollected=0; survivalTime=0; shakeAmt=0; heartTimer=0;
   camYaw=0; walkT=0; blinkCooldown=0; blinkAvail=false;
   isSprinting=false; sprintBtn.classList.remove('active');
+  stopWinSong();
   camera.position.set(0, 5, -8); camera.fov=72; camera.updateProjectionMatrix();
 }
 
@@ -890,10 +902,10 @@ function updateHUD(worstState) {
   const danger = worstState==='chase'?Math.min(0.9,0.4+detMeter/100*0.5):worstState==='alert'?0.2:0;
   document.getElementById('vignette').style.opacity = danger.toFixed(2);
 
-  // Blink button
-  const isDetected = worstState==='chase'||worstState==='alert'||detMeter>20;
-  blinkAvail = isDetected && blinkCooldown===0;
-  blinkBtn.style.display = isDetected ? 'block' : 'none';
+  // Blink button — only available when fully detected (chase state)
+  const isChased = worstState === 'chase';
+  blinkAvail = isChased && blinkCooldown === 0;
+  blinkBtn.style.display = isChased ? 'block' : 'none';
   const pct = blinkCooldown===0 ? 100 : ((BLINK_RECHARGE-blinkCooldown)/BLINK_RECHARGE*100);
   document.getElementById('blink-bar-fill').style.width = pct+'%';
   document.getElementById('blink-bar-fill').style.background = blinkAvail?'#33aaff':'#1a4466';
@@ -932,7 +944,7 @@ function startThrowAnimation(catcher) {
 // ── End Game ───────────────────────────────────────────────────
 function endGame(reason) {
   running=false;
-  if (reason==='caught') { playCaught(); shakeAmt=3; } else silenceSiren();
+  if (reason==='caught') { playCaught(); shakeAmt=3; } else { silenceSiren(); playWinSong(); }
   const mins=Math.floor(survivalTime/60), secs=Math.floor(survivalTime%60).toString().padStart(2,'0');
   const h1=document.getElementById('overlay').querySelector('h1');
   const sub=document.getElementById('overlay').querySelector('.sub');
