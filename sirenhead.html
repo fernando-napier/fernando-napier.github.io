@@ -179,7 +179,7 @@ canvas { display:block; }
 #final-score b { color:#ffcc44; }
 #config {
   display:flex; gap:24px; margin-bottom:22px; align-items:center;
-  font-size:12px; color:#666; letter-spacing:2px;
+  font-size:12px; color:#666; letter-spacing:2px; flex-wrap:wrap; justify-content:center;
 }
 #config label { display:flex; flex-direction:column; align-items:center; gap:6px; }
 #config select, #config input[type=checkbox] { font-family:inherit; background:#111; color:#ccc;
@@ -189,6 +189,20 @@ canvas { display:block; }
   background:#bb1100; color:#fff; border:none; cursor:pointer; letter-spacing:3px;
   -webkit-tap-highlight-color:transparent; }
 #ctrl-info { margin-top:18px; font-size:11px; color:#444; line-height:2.2; text-align:center; }
+
+@media (max-height: 500px) {
+  #overlay { justify-content:flex-start; padding:8px 16px; gap:0; }
+  #overlay h1 { font-size:clamp(18px,4vw,26px); letter-spacing:3px; margin-bottom:2px; }
+  #overlay .sub { font-size:10px; margin-bottom:8px; letter-spacing:2px; }
+  #final-score { font-size:12px; margin-bottom:8px; line-height:1.7; }
+  #config { gap:10px; margin-bottom:10px; }
+  #config label { font-size:9px; gap:3px; letter-spacing:1px; }
+  #config select { font-size:11px; padding:2px 6px; }
+  #config input[type=checkbox] { width:16px; height:16px; }
+  #start-btn { padding:8px 32px; font-size:15px; }
+  #end-dance-btn { margin-top:6px; padding:7px 20px; font-size:11px; }
+  #ctrl-info { margin-top:6px; font-size:9px; line-height:1.8; }
+}
 </style>
 </head>
 <body>
