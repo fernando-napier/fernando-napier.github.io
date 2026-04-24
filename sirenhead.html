@@ -984,15 +984,32 @@ function startThrowAnimation(catcher) {
 }
 
 // ── Topple siren heads then start dance ────────────────────────
-function dissolveAndStartDance(reason) {
+function dissolveAndStartDance(reason, dancerCount) {
   const fallDirs = sirens.map(() => (Math.random() < 0.5 ? 1 : -1));
 
-  // Centroid of all siren positions (pos is {x,z})
+  // Find the tightest cluster: for each siren, sum distances to its nearest neighbours;
+  // the siren with the smallest spread is the cluster centre.
+  const dist = (a, b) => Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z);
+  const k = Math.min(2, sirens.length - 1);
+  let bestCenter = sirens[0], bestSpread = Infinity;
+  sirens.forEach(s => {
+    const spread = sirens
+      .filter(o => o !== s)
+      .sort((a, b) => dist(a, s) - dist(b, s))
+      .slice(0, k)
+      .reduce((sum, o) => sum + dist(o, s), 0);
+    if (spread < bestSpread) { bestSpread = spread; bestCenter = s; }
+  });
+  const cluster = [bestCenter,
+    ...sirens.filter(s => s !== bestCenter)
+      .sort((a, b) => dist(a, bestCenter) - dist(b, bestCenter))
+      .slice(0, k)
+  ];
   let cx = 0, cz = 0;
-  sirens.forEach(s => { cx += s.pos.x; cz += s.pos.z; });
-  cx /= sirens.length; cz /= sirens.length;
+  cluster.forEach(s => { cx += s.pos.x; cz += s.pos.z; });
+  cx /= cluster.length; cz /= cluster.length;
 
-  // Pull camera from current spot toward a point 20 units behind the centroid
+  // Pull camera toward cluster, staying 20 units back
   const camStart = camera.position.clone();
   const dx = cx - camStart.x, dz = cz - camStart.z;
   const len = Math.sqrt(dx*dx + dz*dz) || 1;
@@ -1006,8 +1023,8 @@ function dissolveAndStartDance(reason) {
   const DIS_DUR = 5000;
   (function frame(now) {
     const t = Math.min((now - startT) / DIS_DUR, 1);
-    const eased = t * t;                        // ease-in fall (gravity feel)
-    const lerpT = 1 - Math.pow(1 - t, 3);      // ease-out camera (smooth arrival)
+    const eased = t * t;                    // ease-in fall (gravity feel)
+    const lerpT = 1 - Math.pow(1 - t, 3);  // ease-out camera (smooth arrival)
     sirens.forEach((s, i) => {
       s.mesh.rotation.z = fallDirs[i] * eased * (Math.PI / 2);
     });
@@ -1017,13 +1034,13 @@ function dissolveAndStartDance(reason) {
       requestAnimationFrame(frame);
     } else {
       playWinSong();
-      startDanceScreen(reason, () => showEndScreen(reason));
+      startDanceScreen(reason, dancerCount, () => showEndScreen(reason));
     }
   }(performance.now()));
 }
 
 // ── Dance screen ───────────────────────────────────────────────
-function startDanceScreen(reason, onDone) {
+function startDanceScreen(reason, dancerCount, onDone) {
   const dScreen = document.getElementById('dance-screen');
   const dCanvas = document.getElementById('dance-canvas');
   const dTimer  = document.getElementById('dance-timer');
@@ -1069,8 +1086,8 @@ function startDanceScreen(reason, onDone) {
     tile.rotation.x = -Math.PI / 2; tile.position.set(fx * 5, 0.01, fz * 5); ds.add(tile);
   }
 
-  // Build dancing siren heads — match the count chosen for this game
-  const DANCER_COUNT = Math.max(1, SIREN_COUNT);
+  // Build dancing siren heads — use the exact count active when the game was won
+  const DANCER_COUNT = Math.max(1, dancerCount);
   const dancers = [];
   const spread = Math.min(10, 44 / Math.max(DANCER_COUNT - 1, 1));
   const xOffset = (DANCER_COUNT - 1) / 2;
@@ -1212,7 +1229,7 @@ function endGame(reason) {
     joystickZone.style.display='none'; sprintBtn.style.display='none';
     blinkBtn.style.display='none'; mapBtn.style.display='none';
     document.getElementById('minimap').style.display='none';
-    dissolveAndStartDance(reason);
+    dissolveAndStartDance(reason, sirens.length);
   }
 }
 
