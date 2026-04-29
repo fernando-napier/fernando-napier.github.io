@@ -9,7 +9,7 @@
 <title>Siren Head — Touch</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { overflow:hidden; background:#000; font-family:'Courier New',monospace; touch-action:none; }
+body { overflow:hidden; background:#000; font-family:'Courier New',monospace; touch-action:none; user-select:none; -webkit-user-select:none; }
 
 /* CSS fallback: rotate the whole page if device is in portrait */
 @media screen and (orientation: portrait) {
@@ -107,20 +107,7 @@ canvas { display:block; }
 }
 #fs-btn:active { background:rgba(255,255,255,0.15); }
 
-/* ── Map toggle ── */
-#map-btn {
-  position:fixed; top:18px; right:22px;
-  width:44px; height:44px;
-  background:rgba(255,255,255,0.07);
-  border:1px solid rgba(255,255,255,0.15);
-  border-radius:6px;
-  color:#888; font-family:'Courier New',monospace;
-  font-size:10px; letter-spacing:1px; text-align:center;
-  line-height:44px;
-  display:none;
-  user-select:none;
-}
-#map-btn.active { border-color:#44aaff; color:#44aaff; }
+
 
 /* ── Minimap ── */
 #minimap {
@@ -261,7 +248,6 @@ canvas { display:block; }
   <div id="blink-bar-track"><div id="blink-bar-fill"></div></div>
 </div>
 <div id="fs-btn">⛶</div>
-<div id="map-btn">MAP</div>
 <div id="pause-btn">❙❙</div>
 <div id="para-hud"></div>
 
@@ -317,8 +303,20 @@ canvas { display:block; }
         <option value="10">10</option>
       </select>
     </label>
-    <label>PARALYZE GEM
-      <input type="checkbox" id="para-gem-chk" checked>
+    <label>PARALYZE GEMS
+      <select id="para-gem-sel">
+        <option value="0" selected>OFF</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+      </select>
     </label>
     <label>SHOW ON MAP
       <input type="checkbox" id="show-sirens-chk" checked>
@@ -357,8 +355,8 @@ const ALERT_DUR       = 9;
 const ESCAPE_DUR      = 7;
 const CATCH_DIST      = 3.2;
 let GEM_COUNT        = 5;
-let useParaGem       = true;
-let paraGemMesh = null, paraGemLight = null, paraGemData = null;
+let PARA_GEM_COUNT   = 0;
+const paraGems = []; // { mesh, light, x, z } — cleared each game
 let paraTimer = 0; // seconds remaining on paralyze effect
 const WORLD_BOUND     = 90;
 const BLINK_RECHARGE  = 18;
@@ -396,7 +394,7 @@ function initAudio() {
   // Main siren oscillators
   sirenGain = actx.createGain(); sirenGain.gain.value = 0; sirenGain.connect(actx.destination);
   const lfo = actx.createOscillator(), lfg = actx.createGain();
-  lfo.frequency.value = 0.65; lfg.gain.value = 72; lfo.connect(lfg); lfo.start();
+  lfo.frequency.value = 0.28; lfg.gain.value = 38; lfo.connect(lfg); lfo.start();
   sirenOsc1 = actx.createOscillator(); sirenOsc1.type = 'sawtooth'; sirenOsc1.frequency.value = 215;
   lfg.connect(sirenOsc1.frequency); sirenOsc1.connect(sirenGain); sirenOsc1.start();
   sirenOsc2 = actx.createOscillator(); sirenOsc2.type = 'sawtooth'; sirenOsc2.frequency.value = 222;
@@ -671,22 +669,24 @@ function placeGems() {
 }
 
 function placeParaGem() {
-  if (paraGemMesh) { scene.remove(paraGemMesh); paraGemMesh = null; }
-  if (paraGemLight) { scene.remove(paraGemLight); paraGemLight = null; }
-  paraGemData = null;
-  if (!useParaGem) return;
+  paraGems.forEach(g => { scene.remove(g.mesh); scene.remove(g.light); });
+  paraGems.length = 0;
+  if (PARA_GEM_COUNT <= 0) return;
   const geo = new THREE.OctahedronGeometry(0.45);
   const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
-  for (let a = 0; a < 400; a++) {
+  let placed = 0;
+  for (let a = 0; a < 800 && placed < PARA_GEM_COUNT; a++) {
     const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*140;
     if (Math.sqrt(x*x+z*z) < 16) continue;
     let blocked = false;
     for (const b of buildingData) { if (Math.abs(x-b.x)<b.w/2+1.5 && Math.abs(z-b.z)<b.d/2+1.5) { blocked=true; break; } }
     if (blocked) continue;
-    paraGemMesh = new THREE.Mesh(geo, mat); paraGemMesh.position.set(x, 1.2, z); scene.add(paraGemMesh);
-    paraGemLight = new THREE.PointLight(0x00ffcc, 1.6, 9); paraGemLight.position.set(x, 1.5, z); scene.add(paraGemLight);
-    paraGemData = { x, z };
-    break;
+    let tooClose = false;
+    for (const pg of paraGems) { if (Math.hypot(x-pg.x, z-pg.z)<20) { tooClose=true; break; } }
+    if (tooClose) continue;
+    const mesh = new THREE.Mesh(geo, mat); mesh.position.set(x, 1.2, z); scene.add(mesh);
+    const light = new THREE.PointLight(0x00ffcc, 1.6, 9); light.position.set(x, 1.5, z); scene.add(light);
+    paraGems.push({ mesh, light, x, z }); placed++;
   }
 }
 
@@ -832,14 +832,7 @@ fsBtn.addEventListener('click', toggleFullscreen);
 document.addEventListener('fullscreenchange',        () => { fsBtn.textContent = document.fullscreenElement        ? '✕' : '⛶'; });
 document.addEventListener('webkitfullscreenchange',  () => { fsBtn.textContent = document.webkitFullscreenElement  ? '✕' : '⛶'; });
 
-// Map toggle
-const mapBtn = document.getElementById('map-btn');
-mapBtn.addEventListener('touchstart', e => {
-  e.preventDefault();
-  showSirenOnMap = !showSirenOnMap;
-  document.getElementById('show-sirens-chk').checked = showSirenOnMap;
-  mapBtn.classList.toggle('active', showSirenOnMap);
-}, { passive: false });
+const mapBtn = { style: { display: '' }, classList: { toggle: () => {} } }; // stub — map toggle moved to pause menu
 
 // Pause
 const pauseBtn  = document.getElementById('pause-btn');
@@ -863,14 +856,13 @@ document.getElementById('pause-resume-btn').addEventListener('touchstart', e => 
 document.getElementById('pause-map-chk').addEventListener('change', () => {
   showSirenOnMap = pauseMapChk.checked;
   document.getElementById('show-sirens-chk').checked = showSirenOnMap;
-  mapBtn.classList.toggle('active', showSirenOnMap);
 });
 document.getElementById('pause-menu-btn').addEventListener('click', () => {
   pauseMenu.style.display = 'none';
   paused = false;
   stopWinSong(); silenceSiren();
   joystickZone.style.display='none'; sprintBtn.style.display='none';
-  blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
+  blinkBtn.style.display='none'; pauseBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
   document.getElementById('para-hud').style.display='none';
   // Reset overlay to start screen
@@ -1132,13 +1124,14 @@ function update(now, dt) {
   gemLights.forEach((l,i) => { if (!gemData[i].collected) l.intensity=1.0+Math.sin(now*0.004+i*2)*0.4; });
 
   // Para gem pickup & animate
-  if (paraGemMesh && paraGemData) {
-    paraGemMesh.rotation.y += dt * 2.2;
-    paraGemMesh.position.y = 1.2 + Math.sin(now * 0.003) * 0.2;
-    if (paraGemLight) paraGemLight.intensity = 1.2 + Math.sin(now * 0.006) * 0.6;
-    if (Math.hypot(playerPos.x - paraGemData.x, playerPos.z - paraGemData.z) < 1.5) {
-      scene.remove(paraGemMesh); scene.remove(paraGemLight);
-      paraGemMesh = null; paraGemLight = null; paraGemData = null;
+  for (let pi = paraGems.length - 1; pi >= 0; pi--) {
+    const pg = paraGems[pi];
+    pg.mesh.rotation.y += dt * 2.2;
+    pg.mesh.position.y = 1.2 + Math.sin(now * 0.003 + pi) * 0.2;
+    pg.light.intensity = 1.2 + Math.sin(now * 0.006 + pi) * 0.6;
+    if (Math.hypot(playerPos.x - pg.x, playerPos.z - pg.z) < 1.5) {
+      scene.remove(pg.mesh); scene.remove(pg.light);
+      paraGems.splice(pi, 1);
       paraTimer = 10;
     }
   }
@@ -1270,6 +1263,10 @@ function startDanceScreen(reason, dancerCount, onDone) {
   const dScreen = document.getElementById('dance-screen');
   const dCanvas = document.getElementById('dance-canvas');
   const dTimer  = document.getElementById('dance-timer');
+  const dTitle  = document.getElementById('dance-title');
+  dTitle.textContent = reason === 'win' ? 'YOU ESCAPED!' : 'YOU WERE CAUGHT.';
+  dTitle.style.color = reason === 'win' ? '#44ff88' : '#ff2200';
+  dTitle.style.textShadow = reason === 'win' ? '0 0 20px #44ff88' : '0 0 20px #ff2200';
   dScreen.style.display = 'flex';
 
   // Size dance canvas to window
@@ -1452,15 +1449,16 @@ function startDanceScreen(reason, dancerCount, onDone) {
 // ── End Game ───────────────────────────────────────────────────
 function endGame(reason) {
   running=false;
+  joystickZone.style.display='none'; sprintBtn.style.display='none';
+  blinkBtn.style.display='none'; pauseBtn.style.display='none';
+  document.getElementById('minimap').style.display='none';
+  document.getElementById('para-hud').style.display='none';
   if (reason==='caught') {
     playCaught(); shakeAmt=3;
-    showEndScreen(reason);
+    silenceSiren();
+    dissolveAndStartDance(reason, sirens.length);
   } else {
     silenceSiren();
-    joystickZone.style.display='none'; sprintBtn.style.display='none';
-    blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
-    document.getElementById('minimap').style.display='none';
-    document.getElementById('para-hud').style.display='none';
     dissolveAndStartDance(reason, sirens.length);
   }
 }
@@ -1476,12 +1474,7 @@ function showEndScreen(reason) {
   fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
   document.getElementById('start-btn').textContent=reason==='win'?'PLAY AGAIN':'TRY AGAIN';
   document.getElementById('overlay').style.display='flex';
-  // Ensure touch controls are hidden (covers the caught path too)
-  joystickZone.style.display='none'; sprintBtn.style.display='none';
-  blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
-  document.getElementById('minimap').style.display='none';
   document.getElementById('dance-screen').style.display='none';
-  document.getElementById('para-hud').style.display='none';
 }
 
 // ── Minimap ────────────────────────────────────────────────────
@@ -1500,8 +1493,8 @@ function drawMinimap() {
     mmCtx.beginPath(); mmCtx.arc(px,pz,4,0,Math.PI*2); mmCtx.fillStyle='#ffee44'; mmCtx.fill();
     mmCtx.beginPath(); mmCtx.arc(px,pz,6,0,Math.PI*2); mmCtx.strokeStyle='rgba(255,238,68,0.35)'; mmCtx.lineWidth=1; mmCtx.stroke();
   }
-  if (paraGemData) {
-    const px=wx(paraGemData.x), pz=wz(paraGemData.z);
+  for (const pg of paraGems) {
+    const px=wx(pg.x), pz=wz(pg.z);
     mmCtx.beginPath(); mmCtx.arc(px,pz,4,0,Math.PI*2); mmCtx.fillStyle='#00ffcc'; mmCtx.fill();
     mmCtx.beginPath(); mmCtx.arc(px,pz,6,0,Math.PI*2); mmCtx.strokeStyle='rgba(0,255,204,0.35)'; mmCtx.lineWidth=1; mmCtx.stroke();
   }
@@ -1525,17 +1518,16 @@ document.getElementById('start-btn').addEventListener('click', () => {
   initWinAudio(); // pre-load inside user gesture so Safari allows it
   SIREN_COUNT    = parseInt(document.getElementById('siren-count-sel').value, 10);
   GEM_COUNT      = parseInt(document.getElementById('gem-count-sel').value, 10);
-  useParaGem     = document.getElementById('para-gem-chk').checked;
+  PARA_GEM_COUNT = parseInt(document.getElementById('para-gem-sel').value, 10);
   showSirenOnMap = document.getElementById('show-sirens-chk').checked;
   document.getElementById('overlay').style.display='none';
   document.getElementById('vignette').style.opacity='0';
   document.getElementById('minimap').style.display='block';
   joystickZone.style.display='block';
   sprintBtn.style.display='flex';
-  mapBtn.style.display='block';
+
   fsBtn.style.display='block';
   pauseBtn.style.display='block';
-  mapBtn.classList.toggle('active', showSirenOnMap);
   makeGround(); initGame(); running=true;
 });
 
