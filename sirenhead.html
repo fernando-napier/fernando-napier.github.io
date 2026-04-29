@@ -899,7 +899,7 @@ let showSirenOnMap = true;
 let playerMesh;
 let playerPos  = { x: 0, z: 0 };
 let detMeter   = 0;
-let gemsCollected = 0, survivalTime = 0;
+let gemsCollected = 0, paraGemsCollected = 0, survivalTime = 0;
 let running = false, shakeAmt = 0, walkT = 0;
 let blinkCooldown = 0, blinkAvail = false;
 const sirens = [];
@@ -997,7 +997,7 @@ function initGame() {
     const s = makeSirenState(sp.x, sp.z, i*37);
     s.mesh = makeSirenHead(); s.mesh.position.set(sp.x, 0, sp.z); scene.add(s.mesh); sirens.push(s);
   });
-  detMeter=0; gemsCollected=0; survivalTime=0; shakeAmt=0; heartTimer=0;
+  detMeter=0; gemsCollected=0; paraGemsCollected=0; survivalTime=0; shakeAmt=0; heartTimer=0;
   camYaw=0; walkT=0; blinkCooldown=0; blinkAvail=false;
   isSprinting=false; sprintBtn.classList.remove('active');
   stopWinSong();
@@ -1146,6 +1146,7 @@ function update(now, dt) {
     if (Math.hypot(playerPos.x - pg.x, playerPos.z - pg.z) < 1.5) {
       scene.remove(pg.mesh); scene.remove(pg.light);
       paraGems.splice(pi, 1);
+      paraGemsCollected++;
       paraTimer = 10;
     }
   }
@@ -1403,7 +1404,7 @@ function startDanceScreen(reason, dancerCount, onDone) {
     ov.querySelector('.sub').textContent = isWin ? 'You gathered all the gems and survived.' : 'Siren Head found you.';
     const fs = document.getElementById('final-score');
     fs.style.display = 'block';
-    fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
+    fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>${PARA_GEM_COUNT > 0 ? `<br>Freeze gems: <b>${paraGemsCollected} / ${PARA_GEM_COUNT}</b>` : ''}<br>Siren Heads: <b>${SIREN_COUNT}</b>`;
     document.getElementById('start-btn').textContent = isWin ? 'PLAY AGAIN' : 'TRY AGAIN';
     btnBack.style.display = 'block';
     dScreen.style.display = 'none';
@@ -1495,7 +1496,7 @@ function showEndScreen(reason) {
   h1.style.color=reason==='win'?'#44ff88':'#ff2200';
   sub.textContent=reason==='win'?'You gathered all the gems and survived.':'Siren Head found you.';
   const fs=document.getElementById('final-score'); fs.style.display='block';
-  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
+  fs.innerHTML=`Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b>${PARA_GEM_COUNT > 0 ? `<br>Freeze gems: <b>${paraGemsCollected} / ${PARA_GEM_COUNT}</b>` : ''}<br>Siren Heads: <b>${SIREN_COUNT}</b>`;
   document.getElementById('start-btn').textContent=reason==='win'?'PLAY AGAIN':'TRY AGAIN';
   document.getElementById('overlay').style.display='flex';
   document.getElementById('dance-screen').style.display='none';
