@@ -385,7 +385,7 @@ onResize();
 scene.add(new THREE.AmbientLight(0x7090a8, 2.2));
 
 // ── Audio ──────────────────────────────────────────────────────
-let actx, sirenGain, sirenOsc1, sirenOsc2, ambientGain;
+let actx, sirenGain, sirenOsc1, sirenOsc2, ambientGain, sirenLfo;
 let heartTimer = 0;
 
 function initAudio() {
@@ -393,8 +393,8 @@ function initAudio() {
 
   // Main siren oscillators
   sirenGain = actx.createGain(); sirenGain.gain.value = 0; sirenGain.connect(actx.destination);
-  const lfo = actx.createOscillator(), lfg = actx.createGain();
-  lfo.frequency.value = 0.28; lfg.gain.value = 38; lfo.connect(lfg); lfo.start();
+  sirenLfo = actx.createOscillator(); const lfg = actx.createGain();
+  sirenLfo.frequency.value = 0.28; lfg.gain.value = 38; sirenLfo.connect(lfg); sirenLfo.start();
   sirenOsc1 = actx.createOscillator(); sirenOsc1.type = 'sawtooth'; sirenOsc1.frequency.value = 215;
   lfg.connect(sirenOsc1.frequency); sirenOsc1.connect(sirenGain); sirenOsc1.start();
   sirenOsc2 = actx.createOscillator(); sirenOsc2.type = 'sawtooth'; sirenOsc2.frequency.value = 222;
@@ -428,6 +428,9 @@ function updateAudio(detMeter, distToSiren, worstState, dt) {
   const stateMult = worstState === 'chase' ? 1.0 : worstState === 'alert' ? 0.55 : 0.18;
   const vol = proxFactor * stateMult * 0.22 + detMeter / 100 * 0.05;
   sirenGain.gain.setTargetAtTime(vol, t, 0.15);
+  // Speed up siren wail on alert/chase
+  const lfoRate = worstState === 'chase' ? 1.1 : worstState === 'alert' ? 0.6 : 0.28;
+  sirenLfo.frequency.setTargetAtTime(lfoRate, t, 0.8);
   // Ambient drone fades out as detection rises
   const ambVol = Math.max(0, 0.04 * (1 - detMeter / 100));
   ambientGain.gain.setTargetAtTime(ambVol, t, 0.4);
@@ -1114,6 +1117,7 @@ function update(now, dt) {
       if (gemsCollected>=GEM_COUNT) { endGame('win'); return; }
     }
   });
+  if (!running) return;
 
   // ── Camera ──
   const camDist=7.5, cpCos=Math.cos(camPitch), cpSin=Math.sin(camPitch);
