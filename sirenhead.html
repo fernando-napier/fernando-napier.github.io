@@ -190,6 +190,42 @@ canvas { display:block; }
   -webkit-tap-highlight-color:transparent; }
 #ctrl-info { margin-top:18px; font-size:11px; color:#444; line-height:2.2; text-align:center; }
 
+/* ── Para gem HUD ── */
+#para-hud {
+  position:fixed; top:70px; left:50%; transform:translateX(-50%);
+  font-size:13px; color:#00ffcc; letter-spacing:4px;
+  text-shadow:0 0 12px #00ffcc; display:none; pointer-events:none; z-index:30;
+}
+
+/* ── Pause button ── */
+#pause-btn {
+  position:fixed; top:18px; right:130px;
+  width:44px; height:44px;
+  background:rgba(255,255,255,0.07);
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:6px;
+  color:#888; font-family:'Courier New',monospace;
+  font-size:14px; text-align:center; line-height:44px;
+  display:none; user-select:none; cursor:pointer; z-index:200;
+}
+
+/* ── Pause menu overlay ── */
+#pause-menu {
+  position:fixed; inset:0; background:rgba(0,0,0,0.88);
+  display:none; flex-direction:column; align-items:center; justify-content:center;
+  gap:18px; z-index:100; color:#fff; font-family:'Courier New',monospace;
+}
+#pause-title { font-size:36px; letter-spacing:10px; color:#ccc; margin-bottom:10px; }
+#pause-map-label { font-size:12px; color:#666; letter-spacing:2px; display:flex; align-items:center; gap:10px; cursor:pointer; }
+#pause-map-label input { width:20px; height:20px; accent-color:#44aaff; }
+#pause-resume-btn, #pause-menu-btn {
+  padding:14px 48px; font-size:16px; font-family:inherit;
+  border:none; cursor:pointer; letter-spacing:3px;
+  -webkit-tap-highlight-color:transparent;
+}
+#pause-resume-btn { background:#224488; color:#aaddff; }
+#pause-menu-btn   { background:#331111; color:#ff6655; }
+
 @media (max-height: 500px) {
   #overlay { justify-content:flex-start; padding:8px 16px; gap:0; }
   #overlay h1 { font-size:clamp(18px,4vw,26px); letter-spacing:3px; margin-bottom:2px; }
@@ -226,6 +262,17 @@ canvas { display:block; }
 </div>
 <div id="fs-btn">⛶</div>
 <div id="map-btn">MAP</div>
+<div id="pause-btn">❙❙</div>
+<div id="para-hud"></div>
+
+<div id="pause-menu">
+  <div id="pause-title">PAUSED</div>
+  <label id="pause-map-label">
+    <input type="checkbox" id="pause-map-chk"> SHOW SIREN HEADS ON MAP
+  </label>
+  <button id="pause-resume-btn">RESUME</button>
+  <button id="pause-menu-btn">MAIN MENU</button>
+</div>
 
 <div id="hud">
   <div id="timer">0:00</div>
@@ -270,6 +317,9 @@ canvas { display:block; }
         <option value="10">10</option>
       </select>
     </label>
+    <label>PARALYZE GEM
+      <input type="checkbox" id="para-gem-chk" checked>
+    </label>
     <label>SHOW ON MAP
       <input type="checkbox" id="show-sirens-chk" checked>
     </label>
@@ -307,6 +357,9 @@ const ALERT_DUR       = 9;
 const ESCAPE_DUR      = 7;
 const CATCH_DIST      = 3.2;
 let GEM_COUNT        = 5;
+let useParaGem       = true;
+let paraGemMesh = null, paraGemLight = null, paraGemData = null;
+let paraTimer = 0; // seconds remaining on paralyze effect
 const WORLD_BOUND     = 90;
 const BLINK_RECHARGE  = 18;
 
@@ -334,11 +387,13 @@ onResize();
 scene.add(new THREE.AmbientLight(0x7090a8, 2.2));
 
 // ── Audio ──────────────────────────────────────────────────────
-let actx, sirenGain, sirenOsc1, sirenOsc2;
+let actx, sirenGain, sirenOsc1, sirenOsc2, ambientGain;
 let heartTimer = 0;
 
 function initAudio() {
   actx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Main siren oscillators
   sirenGain = actx.createGain(); sirenGain.gain.value = 0; sirenGain.connect(actx.destination);
   const lfo = actx.createOscillator(), lfg = actx.createGain();
   lfo.frequency.value = 0.65; lfg.gain.value = 72; lfo.connect(lfg); lfo.start();
@@ -346,6 +401,18 @@ function initAudio() {
   lfg.connect(sirenOsc1.frequency); sirenOsc1.connect(sirenGain); sirenOsc1.start();
   sirenOsc2 = actx.createOscillator(); sirenOsc2.type = 'sawtooth'; sirenOsc2.frequency.value = 222;
   lfg.connect(sirenOsc2.frequency); sirenOsc2.connect(sirenGain); sirenOsc2.start();
+
+  // Soft ambient drone (sine, very low — plays when patrol/not detected)
+  ambientGain = actx.createGain(); ambientGain.gain.value = 0.03; ambientGain.connect(actx.destination);
+  const ambOsc = actx.createOscillator(); ambOsc.type = 'sine'; ambOsc.frequency.value = 55;
+  const ambOsc2 = actx.createOscillator(); ambOsc2.type = 'sine'; ambOsc2.frequency.value = 82;
+  const ambLfo = actx.createOscillator(); ambLfo.frequency.value = 0.2;
+  const ambLfg = actx.createGain(); ambLfg.gain.value = 6;
+  ambLfo.connect(ambLfg); ambLfg.connect(ambOsc.frequency);
+  ambOsc.connect(ambientGain); ambOsc2.connect(ambientGain);
+  ambOsc.start(); ambOsc2.start(); ambLfo.start();
+
+  // Wind noise
   const buf = actx.createBuffer(1, actx.sampleRate * 4, actx.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
@@ -355,10 +422,17 @@ function initAudio() {
   wind.connect(wf); wf.connect(wg); wg.connect(actx.destination); wind.start();
 }
 
-function updateAudio(detMeter, distToSiren, dt) {
+function updateAudio(detMeter, distToSiren, worstState, dt) {
   if (!actx) return;
-  const vol = Math.max(0, Math.min(1, 1 - distToSiren / 75)) * 0.14 + detMeter / 100 * 0.06;
-  sirenGain.gain.setTargetAtTime(vol, actx.currentTime, 0.1);
+  const t = actx.currentTime;
+  // Siren volume scales with proximity AND alert state
+  const proxFactor = Math.max(0, Math.min(1, 1 - distToSiren / 80));
+  const stateMult = worstState === 'chase' ? 1.0 : worstState === 'alert' ? 0.55 : 0.18;
+  const vol = proxFactor * stateMult * 0.22 + detMeter / 100 * 0.05;
+  sirenGain.gain.setTargetAtTime(vol, t, 0.15);
+  // Ambient drone fades out as detection rises
+  const ambVol = Math.max(0, 0.04 * (1 - detMeter / 100));
+  ambientGain.gain.setTargetAtTime(ambVol, t, 0.4);
   heartTimer -= dt;
   const rate = 0.8 + (detMeter / 100) * 2.4;
   if (heartTimer <= 0) { heartTimer = 1 / rate; playHeartbeat(0.15 + (detMeter / 100) * 0.55); }
@@ -393,20 +467,35 @@ function playCaught() {
 }
 function silenceSiren() {
   if (!actx) return;
+  const t = actx.currentTime;
   if (sirenGain) {
-    sirenGain.gain.cancelScheduledValues(actx.currentTime);
-    sirenGain.gain.setValueAtTime(sirenGain.gain.value, actx.currentTime);
-    sirenGain.gain.linearRampToValueAtTime(0, actx.currentTime + 0.05);
+    sirenGain.gain.cancelScheduledValues(t);
+    sirenGain.gain.setValueAtTime(sirenGain.gain.value, t);
+    sirenGain.gain.linearRampToValueAtTime(0, t + 0.05);
+  }
+  if (ambientGain) {
+    ambientGain.gain.cancelScheduledValues(t);
+    ambientGain.gain.setValueAtTime(ambientGain.gain.value, t);
+    ambientGain.gain.linearRampToValueAtTime(0, t + 0.3);
   }
 }
 
 let winAudio = null;
 let activeDanceStop = null; // tears down any still-running dance before a new one starts
+
+function initWinAudio() {
+  // Pre-create on first user gesture so Safari allows playback later
+  if (!winAudio) {
+    winAudio = new Audio('winsong.mp3');
+    winAudio.volume = 0.85;
+    winAudio.load();
+  }
+}
 function playWinSong() {
-  if (winAudio) { winAudio.pause(); winAudio.currentTime = 0; }
-  winAudio = new Audio('winsong.mp3');
-  winAudio.volume = 0.85;
-  winAudio.play().catch(() => {});
+  if (!winAudio) initWinAudio();
+  winAudio.currentTime = 0;
+  const p = winAudio.play();
+  if (p && p.catch) p.catch(() => {});
 }
 function stopWinSong() {
   if (winAudio) { winAudio.pause(); winAudio.currentTime = 0; }
@@ -581,6 +670,26 @@ function placeGems() {
   }
 }
 
+function placeParaGem() {
+  if (paraGemMesh) { scene.remove(paraGemMesh); paraGemMesh = null; }
+  if (paraGemLight) { scene.remove(paraGemLight); paraGemLight = null; }
+  paraGemData = null;
+  if (!useParaGem) return;
+  const geo = new THREE.OctahedronGeometry(0.45);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
+  for (let a = 0; a < 400; a++) {
+    const x = (Math.random()-0.5)*140, z = (Math.random()-0.5)*140;
+    if (Math.sqrt(x*x+z*z) < 16) continue;
+    let blocked = false;
+    for (const b of buildingData) { if (Math.abs(x-b.x)<b.w/2+1.5 && Math.abs(z-b.z)<b.d/2+1.5) { blocked=true; break; } }
+    if (blocked) continue;
+    paraGemMesh = new THREE.Mesh(geo, mat); paraGemMesh.position.set(x, 1.2, z); scene.add(paraGemMesh);
+    paraGemLight = new THREE.PointLight(0x00ffcc, 1.6, 9); paraGemLight.position.set(x, 1.5, z); scene.add(paraGemLight);
+    paraGemData = { x, z };
+    break;
+  }
+}
+
 // ── LOS & Collision ────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
 const _ro = new THREE.Vector3(), _rt = new THREE.Vector3(), _rd = new THREE.Vector3();
@@ -705,12 +814,17 @@ blinkBtn.addEventListener('touchstart', e => {
 const fsBtn = document.getElementById('fs-btn');
 function toggleFullscreen() {
   const el = document.documentElement;
-  if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-    if (req) req.call(el);
+  const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+  if (!isFullscreen) {
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+    else if (el.msRequestFullscreen) el.msRequestFullscreen();
   } else {
-    const exit = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
-    if (exit) exit.call(document);
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    else if (document.mozCancelFullScreen) document.mozCancelFullScreen();
+    else if (document.msExitFullscreen) document.msExitFullscreen();
   }
 }
 fsBtn.addEventListener('touchstart', e => { e.preventDefault(); toggleFullscreen(); }, { passive: false });
@@ -726,6 +840,50 @@ mapBtn.addEventListener('touchstart', e => {
   document.getElementById('show-sirens-chk').checked = showSirenOnMap;
   mapBtn.classList.toggle('active', showSirenOnMap);
 }, { passive: false });
+
+// Pause
+const pauseBtn  = document.getElementById('pause-btn');
+const pauseMenu = document.getElementById('pause-menu');
+const pauseMapChk = document.getElementById('pause-map-chk');
+let paused = false;
+
+function openPause() {
+  paused = true; running = false;
+  pauseMapChk.checked = showSirenOnMap;
+  pauseMenu.style.display = 'flex';
+}
+function closePause() {
+  paused = false; running = true;
+  pauseMenu.style.display = 'none';
+}
+pauseBtn.addEventListener('touchstart', e => { e.preventDefault(); openPause(); }, { passive: false });
+pauseBtn.addEventListener('click', openPause);
+document.getElementById('pause-resume-btn').addEventListener('click', closePause);
+document.getElementById('pause-resume-btn').addEventListener('touchstart', e => { e.preventDefault(); closePause(); }, { passive: false });
+document.getElementById('pause-map-chk').addEventListener('change', () => {
+  showSirenOnMap = pauseMapChk.checked;
+  document.getElementById('show-sirens-chk').checked = showSirenOnMap;
+  mapBtn.classList.toggle('active', showSirenOnMap);
+});
+document.getElementById('pause-menu-btn').addEventListener('click', () => {
+  pauseMenu.style.display = 'none';
+  paused = false;
+  stopWinSong(); silenceSiren();
+  joystickZone.style.display='none'; sprintBtn.style.display='none';
+  blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
+  document.getElementById('minimap').style.display='none';
+  document.getElementById('para-hud').style.display='none';
+  // Reset overlay to start screen
+  const ov = document.getElementById('overlay');
+  ov.querySelector('h1').textContent = 'SIREN HEAD';
+  ov.querySelector('h1').style.color = '#ff2200';
+  ov.querySelector('.sub').textContent = 'Find all 5 gems. Stay hidden.';
+  document.getElementById('final-score').style.display = 'none';
+  document.getElementById('start-btn').textContent = 'BEGIN';
+  document.getElementById('end-dance-btn').style.display = 'none';
+  ov.style.display = 'flex';
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && running) openPause(); else if (e.key === 'Escape' && paused) closePause(); });
 
 // ── Camera state ──────────────────────────────────────────────
 let camYaw = 0, camPitch = 0.22;
@@ -821,7 +979,8 @@ function initGame() {
   if (playerMesh) scene.remove(playerMesh);
   sirens.forEach(s => { if (s.mesh) scene.remove(s.mesh); });
   sirens.length = 0;
-  generateBuildings(); addStreetLights(); placeGems();
+  paraTimer = 0;
+  generateBuildings(); addStreetLights(); placeGems(); placeParaGem();
   playerPos = { x:0, z:0 };
   playerMesh = makePlayerMesh(); playerMesh.position.set(0,0,0); scene.add(playerMesh);
   const spawnPts = [
@@ -890,7 +1049,9 @@ function update(now, dt) {
       s.state='chase'; s.escapeTimer=ESCAPE_DUR;
       if (!s.wasInChase) { playAlert(); s.wasInChase=true; }
     }
-    if (s.state==='patrol') {
+    if (paraTimer > 0) {
+      // Frozen — no movement, state timers paused
+    } else if (s.state==='patrol') {
       s.wasInChase=false;
       if (Math.hypot(s.pos.x-s.wp.x, s.pos.z-s.wp.z)<3) s.wp=randomWaypoint();
       if (inAud) { s.state='alert'; s.alertTimer=ALERT_DUR; }
@@ -970,7 +1131,26 @@ function update(now, dt) {
 
   gemLights.forEach((l,i) => { if (!gemData[i].collected) l.intensity=1.0+Math.sin(now*0.004+i*2)*0.4; });
 
-  updateAudio(detMeter, minDist, dt);
+  // Para gem pickup & animate
+  if (paraGemMesh && paraGemData) {
+    paraGemMesh.rotation.y += dt * 2.2;
+    paraGemMesh.position.y = 1.2 + Math.sin(now * 0.003) * 0.2;
+    if (paraGemLight) paraGemLight.intensity = 1.2 + Math.sin(now * 0.006) * 0.6;
+    if (Math.hypot(playerPos.x - paraGemData.x, playerPos.z - paraGemData.z) < 1.5) {
+      scene.remove(paraGemMesh); scene.remove(paraGemLight);
+      paraGemMesh = null; paraGemLight = null; paraGemData = null;
+      paraTimer = 10;
+    }
+  }
+  if (paraTimer > 0) {
+    paraTimer = Math.max(0, paraTimer - dt);
+    document.getElementById('para-hud').textContent = `FROZEN ${Math.ceil(paraTimer)}s`;
+    document.getElementById('para-hud').style.display = 'block';
+  } else {
+    document.getElementById('para-hud').style.display = 'none';
+  }
+
+  updateAudio(detMeter, minDist, worstState, dt);
   if (worstState==='chase') shakeAmt=Math.max(shakeAmt, 0.15);
   updateHUD(worstState);
 }
@@ -1278,8 +1458,9 @@ function endGame(reason) {
   } else {
     silenceSiren();
     joystickZone.style.display='none'; sprintBtn.style.display='none';
-    blinkBtn.style.display='none'; mapBtn.style.display='none';
+    blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
     document.getElementById('minimap').style.display='none';
+    document.getElementById('para-hud').style.display='none';
     dissolveAndStartDance(reason, sirens.length);
   }
 }
@@ -1297,9 +1478,10 @@ function showEndScreen(reason) {
   document.getElementById('overlay').style.display='flex';
   // Ensure touch controls are hidden (covers the caught path too)
   joystickZone.style.display='none'; sprintBtn.style.display='none';
-  blinkBtn.style.display='none'; mapBtn.style.display='none';
+  blinkBtn.style.display='none'; mapBtn.style.display='none'; pauseBtn.style.display='none';
   document.getElementById('minimap').style.display='none';
   document.getElementById('dance-screen').style.display='none';
+  document.getElementById('para-hud').style.display='none';
 }
 
 // ── Minimap ────────────────────────────────────────────────────
@@ -1318,6 +1500,11 @@ function drawMinimap() {
     mmCtx.beginPath(); mmCtx.arc(px,pz,4,0,Math.PI*2); mmCtx.fillStyle='#ffee44'; mmCtx.fill();
     mmCtx.beginPath(); mmCtx.arc(px,pz,6,0,Math.PI*2); mmCtx.strokeStyle='rgba(255,238,68,0.35)'; mmCtx.lineWidth=1; mmCtx.stroke();
   }
+  if (paraGemData) {
+    const px=wx(paraGemData.x), pz=wz(paraGemData.z);
+    mmCtx.beginPath(); mmCtx.arc(px,pz,4,0,Math.PI*2); mmCtx.fillStyle='#00ffcc'; mmCtx.fill();
+    mmCtx.beginPath(); mmCtx.arc(px,pz,6,0,Math.PI*2); mmCtx.strokeStyle='rgba(0,255,204,0.35)'; mmCtx.lineWidth=1; mmCtx.stroke();
+  }
   if (showSirenOnMap) {
     for (const s2 of sirens) {
       mmCtx.beginPath(); mmCtx.arc(wx(s2.pos.x),wz(s2.pos.z),5,0,Math.PI*2);
@@ -1335,8 +1522,10 @@ function drawMinimap() {
 // ── Start button ───────────────────────────────────────────────
 document.getElementById('start-btn').addEventListener('click', () => {
   if (!actx) initAudio(); else if (actx.state==='suspended') actx.resume();
+  initWinAudio(); // pre-load inside user gesture so Safari allows it
   SIREN_COUNT    = parseInt(document.getElementById('siren-count-sel').value, 10);
   GEM_COUNT      = parseInt(document.getElementById('gem-count-sel').value, 10);
+  useParaGem     = document.getElementById('para-gem-chk').checked;
   showSirenOnMap = document.getElementById('show-sirens-chk').checked;
   document.getElementById('overlay').style.display='none';
   document.getElementById('vignette').style.opacity='0';
@@ -1345,6 +1534,7 @@ document.getElementById('start-btn').addEventListener('click', () => {
   sprintBtn.style.display='flex';
   mapBtn.style.display='block';
   fsBtn.style.display='block';
+  pauseBtn.style.display='block';
   mapBtn.classList.toggle('active', showSirenOnMap);
   makeGround(); initGame(); running=true;
 });
