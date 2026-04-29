@@ -1357,6 +1357,11 @@ function startDanceScreen(reason, dancerCount, onDone) {
   // Toggle buttons
   const btnView = document.getElementById('dance-view-btn');
   const btnBack = document.getElementById('end-dance-btn');
+  const isWin = reason === 'win';
+  const resultColor = isWin ? '#44ff88' : '#ff2200';
+  const resultBorderAlpha = isWin ? 'rgba(68,255,136,0.4)' : 'rgba(255,34,0,0.4)';
+  btnView.style.color = resultColor;
+  btnView.style.borderColor = resultBorderAlpha;
 
   const cleanup = () => {
     danceRunning = false;
@@ -1373,13 +1378,13 @@ function startDanceScreen(reason, dancerCount, onDone) {
   btnView.onclick = () => {
     const mins = Math.floor(survivalTime/60), secs = Math.floor(survivalTime%60).toString().padStart(2,'0');
     const ov = document.getElementById('overlay');
-    ov.querySelector('h1').textContent = 'ESCAPED.';
-    ov.querySelector('h1').style.color = '#44ff88';
-    ov.querySelector('.sub').textContent = 'You gathered all the gems and survived.';
+    ov.querySelector('h1').textContent = isWin ? 'ESCAPED.' : 'CAUGHT.';
+    ov.querySelector('h1').style.color = resultColor;
+    ov.querySelector('.sub').textContent = isWin ? 'You gathered all the gems and survived.' : 'Siren Head found you.';
     const fs = document.getElementById('final-score');
     fs.style.display = 'block';
     fs.innerHTML = `Survived: <b>${mins}:${secs}</b><br>Gems: <b>${gemsCollected} / ${GEM_COUNT}</b><br>Siren Heads: <b>${SIREN_COUNT}</b>`;
-    document.getElementById('start-btn').textContent = 'PLAY AGAIN';
+    document.getElementById('start-btn').textContent = isWin ? 'PLAY AGAIN' : 'TRY AGAIN';
     btnBack.style.display = 'block';
     dScreen.style.display = 'none';
     ov.style.display = 'flex';
