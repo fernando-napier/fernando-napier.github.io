@@ -203,8 +203,6 @@ canvas { display:block; touch-action:none; }
   gap:18px; z-index:100; color:#fff; font-family:'Courier New',monospace;
 }
 #pause-title { font-size:36px; letter-spacing:10px; color:#ccc; margin-bottom:10px; }
-#pause-map-label { font-size:12px; color:#666; letter-spacing:2px; display:flex; align-items:center; gap:10px; cursor:pointer; }
-#pause-map-label input { width:20px; height:20px; accent-color:#44aaff; }
 #pause-resume-btn, #pause-menu-btn {
   padding:14px 48px; font-size:16px; font-family:inherit;
   border:none; cursor:pointer; letter-spacing:3px;
@@ -253,9 +251,6 @@ canvas { display:block; touch-action:none; }
 
 <div id="pause-menu">
   <div id="pause-title">PAUSED</div>
-  <label id="pause-map-label">
-    <input type="checkbox" id="pause-map-chk"> SHOW SIREN HEADS ON MAP
-  </label>
   <button id="pause-resume-btn">RESUME</button>
   <button id="pause-menu-btn">MAIN MENU</button>
 </div>
@@ -850,12 +845,10 @@ const mapBtn = { style: { display: '' }, classList: { toggle: () => {} } }; // s
 // Pause
 const pauseBtn  = document.getElementById('pause-btn');
 const pauseMenu = document.getElementById('pause-menu');
-const pauseMapChk = document.getElementById('pause-map-chk');
 let paused = false;
 
 function openPause() {
   paused = true; running = false;
-  pauseMapChk.checked = showSirenOnMap;
   pauseMenu.style.display = 'flex';
 }
 function closePause() {
@@ -866,10 +859,6 @@ pauseBtn.addEventListener('touchstart', e => { e.preventDefault(); openPause(); 
 pauseBtn.addEventListener('click', openPause);
 document.getElementById('pause-resume-btn').addEventListener('click', closePause);
 document.getElementById('pause-resume-btn').addEventListener('touchstart', e => { e.preventDefault(); closePause(); }, { passive: false });
-document.getElementById('pause-map-chk').addEventListener('change', () => {
-  showSirenOnMap = pauseMapChk.checked;
-  document.getElementById('show-sirens-chk').checked = showSirenOnMap;
-});
 document.getElementById('pause-menu-btn').addEventListener('click', () => {
   pauseMenu.style.display = 'none';
   paused = false;
