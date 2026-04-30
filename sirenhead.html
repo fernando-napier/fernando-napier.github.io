@@ -110,14 +110,28 @@ canvas { display:block; touch-action:none; }
 
 
 /* ── Minimap ── */
+#minimap-wrap {
+  position:fixed; top:70px; right:22px;
+  display:none; flex-direction:column; align-items:stretch;
+}
 #minimap {
-  position:fixed; bottom:30px; right:22px;
   width:140px; height:140px;
   border:1px solid rgba(255,255,255,0.12);
   border-radius:4px;
-  pointer-events:none;
-  display:none;
+  pointer-events:none; display:block;
 }
+#map-toggle-btn {
+  position:fixed; top:18px; right:184px;
+  width:54px; height:44px;
+  background:rgba(255,255,255,0.07);
+  border:1px solid rgba(255,255,255,0.15);
+  border-radius:6px;
+  color:#444; font-family:'Courier New',monospace;
+  font-size:10px; letter-spacing:2px; text-align:center; line-height:44px;
+  display:none; user-select:none; cursor:pointer; z-index:200;
+  -webkit-tap-highlight-color:transparent;
+}
+#map-toggle-btn.active { color:#44aaff; border-color:rgba(68,170,255,0.35); }
 
 /* ── Blink flash ── */
 #blink-flash {
@@ -229,7 +243,9 @@ canvas { display:block; touch-action:none; }
 <body>
 <canvas id="c"></canvas>
 <div id="vignette"></div>
-<canvas id="minimap" width="140" height="140"></canvas>
+<div id="minimap-wrap">
+  <canvas id="minimap" width="140" height="140"></canvas>
+</div>
 <div id="blink-flash"></div>
 <div id="dance-screen">
   <div id="dance-title">YOU ESCAPED!</div>
@@ -245,6 +261,7 @@ canvas { display:block; touch-action:none; }
   BLINK
   <div id="blink-bar-track"><div id="blink-bar-fill"></div></div>
 </div>
+<button id="map-toggle-btn">SIRENS</button>
 <div id="fs-btn">⛶</div>
 <div id="pause-btn">❙❙</div>
 <div id="para-hud"></div>
@@ -840,8 +857,6 @@ fsBtn.addEventListener('click', toggleFullscreen);
 document.addEventListener('fullscreenchange',        () => { fsBtn.textContent = document.fullscreenElement        ? '✕' : '⛶'; });
 document.addEventListener('webkitfullscreenchange',  () => { fsBtn.textContent = document.webkitFullscreenElement  ? '✕' : '⛶'; });
 
-const mapBtn = { style: { display: '' }, classList: { toggle: () => {} } }; // stub — map toggle moved to pause menu
-
 // Pause
 const pauseBtn  = document.getElementById('pause-btn');
 const pauseMenu = document.getElementById('pause-menu');
@@ -865,7 +880,8 @@ document.getElementById('pause-menu-btn').addEventListener('click', () => {
   stopWinSong(); silenceSiren();
   joystickZone.style.display='none'; sprintBtn.style.display='none';
   blinkBtn.style.display='none'; pauseBtn.style.display='none';
-  document.getElementById('minimap').style.display='none';
+  mapToggleBtn.style.display='none';
+  document.getElementById('minimap-wrap').style.display='none';
   document.getElementById('para-hud').style.display='none';
   // Reset overlay to start screen
   const ov = document.getElementById('overlay');
@@ -885,6 +901,10 @@ let camYaw = 0, camPitch = 0.22;
 // ── Game State ─────────────────────────────────────────────────
 let SIREN_COUNT    = 3;
 let showSirenOnMap = true;
+const mapToggleBtn = document.getElementById('map-toggle-btn');
+function syncMapToggle() { mapToggleBtn.classList.toggle('active', showSirenOnMap); }
+mapToggleBtn.addEventListener('click', () => { showSirenOnMap = !showSirenOnMap; syncMapToggle(); });
+mapToggleBtn.addEventListener('touchstart', e => { e.preventDefault(); showSirenOnMap = !showSirenOnMap; syncMapToggle(); }, { passive: false });
 let playerMesh;
 let playerPos  = { x: 0, z: 0 };
 let detMeter   = 0;
@@ -1466,7 +1486,8 @@ function endGame(reason) {
   running=false;
   joystickZone.style.display='none'; sprintBtn.style.display='none';
   blinkBtn.style.display='none'; pauseBtn.style.display='none';
-  document.getElementById('minimap').style.display='none';
+  mapToggleBtn.style.display='none';
+  document.getElementById('minimap-wrap').style.display='none';
   document.getElementById('para-hud').style.display='none';
   silenceSiren();
   if (reason==='caught') {
@@ -1536,12 +1557,14 @@ document.getElementById('start-btn').addEventListener('click', () => {
   showSirenOnMap = document.getElementById('show-sirens-chk').checked;
   document.getElementById('overlay').style.display='none';
   document.getElementById('vignette').style.opacity='0';
-  document.getElementById('minimap').style.display='block';
+  document.getElementById('minimap-wrap').style.display='flex';
   joystickZone.style.display='block';
   sprintBtn.style.display='flex';
 
   fsBtn.style.display='block';
   pauseBtn.style.display='block';
+  mapToggleBtn.style.display='block';
+  syncMapToggle();
   makeGround(); initGame(); running=true;
 });
 
